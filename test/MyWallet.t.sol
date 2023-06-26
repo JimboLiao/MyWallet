@@ -12,6 +12,7 @@ contract MyWalletTest is Test {
     uint256 ownerNum = 3;
     uint256 confirmThreshold = 2;
     address[] owners;
+    address[] whiteList;
     address someone;
     MyWallet wallet;
     Counter counter;
@@ -23,10 +24,11 @@ contract MyWalletTest is Test {
     function setUp() public {
         setOwners(ownerNum);
         assertEq(owners.length, ownerNum);
+        address whiteAddr = makeAddr("whiteAddr");
         someone = makeAddr("someone");
         vm.deal(someone, INIT_BALANCE);
-
-        wallet = new MyWallet(owners, confirmThreshold);
+        whiteList.push(whiteAddr);
+        wallet = new MyWallet(owners, confirmThreshold, whiteList);
         counter = new Counter();
     }
 
@@ -151,6 +153,82 @@ contract MyWalletTest is Test {
         require(status == MyWallet.TransactionStatus.OVERTIME, "status error");
     }
 
+    function testSubmitTransactionToWhiteListAndExecute() public{
+        // submit a transaction
+        uint256 amount = 1 ether;
+        vm.startPrank(owners[0]);
+        (bytes memory data, uint256 id) = submitTxWhiteList(amount);
+        vm.stopPrank();
+
+        // check effects
+        assertEq(id, 0);
+        (MyWallet.TransactionStatus status, 
+        address to, 
+        uint256 value, 
+        bytes memory _data, 
+        uint256 confirmNum, 
+        uint256 timestamp) = wallet.getTransactionInfo(id);
+        require(status == MyWallet.TransactionStatus.PASS, "status error");
+        assertEq(to, whiteList[0]);
+        assertEq(value, amount);
+        assertEq(data, _data);
+        assertEq(confirmNum, 1);
+        assertEq(timestamp, block.timestamp);
+        assertTrue(wallet.isConfirmed(id, owners[0]));
+
+        // execute the transaction
+        payable(address(wallet)).transfer(amount);
+        vm.expectEmit(true, true, true, true, address(wallet));
+        emit ExecuteTransaction(id);
+        wallet.executeTransaction(id);
+
+        // check effects
+        assertEq(whiteList[0].balance, amount);
+    }
+
+    function testFreezeWallet() public {
+        // freeze wallet
+        vm.startPrank(owners[0]);
+        wallet.freezeWallet();
+        vm.stopPrank();
+
+        // check effects
+        assertTrue(wallet.isFreezing());
+    }
+
+    function testFreezeWalletBySomeone() public {
+        // freeze wallet
+        vm.startPrank(someone);
+        vm.expectRevert(MyWallet.NotOwner.selector);
+        wallet.freezeWallet();
+        vm.stopPrank();
+    }
+
+    function testUnfreezeWallet() public {
+        // freeze wallet
+        vm.startPrank(owners[0]);
+        wallet.freezeWallet();
+        vm.stopPrank();
+
+        // check effects
+        assertTrue(wallet.isFreezing());
+
+        // unfreeze wallet
+        vm.prank(owners[0]);
+        wallet.unfreezeWallet();
+        assertTrue(wallet.unfreezeBy(owners[0]));
+
+        vm.prank(owners[1]);
+        wallet.unfreezeWallet();
+
+        // cehck effects
+        assertFalse(wallet.isFreezing());
+        assertFalse(wallet.unfreezeBy(owners[0]));
+        assertFalse(wallet.unfreezeBy(owners[1]));
+    }
+
+    // useful utilities 
+    // make _n owners with INIT_BALANCE
     function setOwners(uint256 _n) internal {
         require(_n > 0, "one owner at least");
         for(uint256 i = 0; i < _n; i++){
@@ -161,8 +239,19 @@ contract MyWalletTest is Test {
         }
     }
 
+    // submit transaction to call Counter's increment function
     function submitTx() public returns(bytes memory data, uint256 id){
         data = abi.encodeCall(Counter.increment, ());
         id = wallet.submitTransaction(address(counter), 0, data);
+    }
+
+    // submit transaction to send whiteList[0] 1 ether
+    function submitTxWhiteList(uint256 amount) public 
+    returns(
+        bytes memory data, 
+        uint256 id
+    ){
+        data = "";
+        id = wallet.submitTransaction(whiteList[0], amount, data);
     }
 }

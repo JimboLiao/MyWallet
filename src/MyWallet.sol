@@ -22,12 +22,16 @@ contract MyWallet {
 
     /* state variables */
     uint256 public constant overTimeLimit = 1 days;
-
+    address[] internal whiteList;
     address[] internal owners;
     Transaction[] internal transactionList;
     uint256 public leastConfirmThreshold;
     mapping(address => bool) public isOwner;
+    mapping(address => bool) public isWhiteList;
     mapping(uint256 => mapping(address => bool)) public isConfirmed;
+    bool public isFreezing;
+    uint256 private unfreezeCounter; // initial 0
+    mapping(address => bool) public unfreezeBy;
 
     /* events */
     event ConfirmTransaction(address indexed sender, uint256 indexed transactionIndex);
@@ -35,12 +39,14 @@ contract MyWallet {
     event Receive(address indexed sender, uint256 indexed amount, uint256 indexed balance);
     
     /* errors */
+    error AlreadyUnfreezeBy(address addr);
     error ExecuteFailed();
     error InvalidTransactionIndex();
     error NotOwner();
     error StatusNotPass();
     error TxAlreadyConfirmed();
     error TxAlreadyExecutedOrOverTime();
+    error WalletFreezing();
 
     /* modifiers */
     modifier onlyOwner(){
@@ -61,7 +67,8 @@ contract MyWallet {
     /* constructor */
     constructor(
         address[] memory _owners,
-        uint256 _leastConfirmThreshold
+        uint256 _leastConfirmThreshold,
+        address[] memory _whiteList
     )
     {
         require(_owners.length > 0, "No owner assigned");
@@ -82,6 +89,18 @@ contract MyWallet {
         }
 
         leastConfirmThreshold = _leastConfirmThreshold;
+
+        if(_whiteList.length > 0){
+            for (uint256 i = 0; i < _whiteList.length; i++) {
+                address whiteAddr = _whiteList[i];
+
+                require(whiteAddr != address(0), "Invalid white address");
+                require(!isWhiteList[whiteAddr], "Already on whiteList");
+
+                isWhiteList[whiteAddr] = true;
+                whiteList.push(whiteAddr);
+            }
+        }
     }
 
     /* receive function */
@@ -127,16 +146,37 @@ contract MyWallet {
         )
     {
         Transaction storage txn = transactionList[_transactionIndex];
-        TransactionStatus status = _getTransactionStatus(_transactionIndex);
-
         return (
-            status,
+            _getTransactionStatus(_transactionIndex),
             txn.to,
             txn.value,
             txn.data,
             txn.confirmNum,
             txn.proposedTimestamp
         );
+    }
+
+    function freezeWallet() external onlyOwner {
+        isFreezing = true;
+    }
+
+    function unfreezeWallet() external onlyOwner {
+        if(unfreezeBy[msg.sender]){
+            revert AlreadyUnfreezeBy(msg.sender);
+        }
+
+        unfreezeBy[msg.sender] = true;
+        if(++unfreezeCounter >= leastConfirmThreshold){
+            isFreezing = false;
+
+            // initialize
+            unfreezeCounter = 0;
+            for(uint256 i = 0; i < owners.length; i++){
+                if(unfreezeBy[owners[i]]){
+                    unfreezeBy[owners[i]] = false;
+                }
+            }
+        }
     }
 
     /* public functions */
@@ -162,7 +202,10 @@ contract MyWallet {
         Transaction storage txn = transactionList[_transactionIndex];
         isConfirmed[_transactionIndex][msg.sender] = true;
         // PASS
-        if(++txn.confirmNum >= leastConfirmThreshold){
+        if(
+            ++txn.confirmNum >= leastConfirmThreshold || 
+            isWhiteList[txn.to]
+        ){
             txn.status = TransactionStatus.PASS;
         }
         // else, txn.status remains PENDING
@@ -175,6 +218,10 @@ contract MyWallet {
         public
         isIndexValid(_transactionIndex)
     {
+        if(isFreezing){
+            revert WalletFreezing();
+        }
+
         Transaction storage txn = transactionList[_transactionIndex];
         if(txn.status != TransactionStatus.PASS){
             revert StatusNotPass();
