@@ -218,6 +218,7 @@ contract MyWalletTest is Test {
         vm.prank(owners[0]);
         wallet.unfreezeWallet();
         assertTrue(wallet.unfreezeBy(round, owners[0]));
+        assertEq(wallet.unfreezeCounter(), 1);
 
         vm.prank(owners[1]);
         wallet.unfreezeWallet();
@@ -225,6 +226,7 @@ contract MyWalletTest is Test {
         // cehck effects
         assertFalse(wallet.isFreezing());
         assertEq(wallet.unfreezeRound(), round + 1);
+        assertEq(wallet.unfreezeCounter(), 0);
     }
 
     // useful utilities 
