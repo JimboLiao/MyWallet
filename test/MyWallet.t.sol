@@ -214,17 +214,17 @@ contract MyWalletTest is Test {
         assertTrue(wallet.isFreezing());
 
         // unfreeze wallet
+        uint256 round = 0;
         vm.prank(owners[0]);
         wallet.unfreezeWallet();
-        assertTrue(wallet.unfreezeBy(owners[0]));
+        assertTrue(wallet.unfreezeBy(round, owners[0]));
 
         vm.prank(owners[1]);
         wallet.unfreezeWallet();
 
         // cehck effects
         assertFalse(wallet.isFreezing());
-        assertFalse(wallet.unfreezeBy(owners[0]));
-        assertFalse(wallet.unfreezeBy(owners[1]));
+        assertEq(wallet.unfreezeRound(), round + 1);
     }
 
     // useful utilities 

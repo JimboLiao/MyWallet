@@ -31,7 +31,8 @@ contract MyWallet {
     mapping(uint256 => mapping(address => bool)) public isConfirmed;
     bool public isFreezing;
     uint256 private unfreezeCounter; // initial 0
-    mapping(address => bool) public unfreezeBy;
+    uint256 public unfreezeRound;
+    mapping(uint256 => mapping(address => bool)) public unfreezeBy;
 
     /* events */
     event ConfirmTransaction(address indexed sender, uint256 indexed transactionIndex);
@@ -161,21 +162,15 @@ contract MyWallet {
     }
 
     function unfreezeWallet() external onlyOwner {
-        if(unfreezeBy[msg.sender]){
+        if(unfreezeBy[unfreezeRound][msg.sender]){
             revert AlreadyUnfreezeBy(msg.sender);
         }
 
-        unfreezeBy[msg.sender] = true;
+        unfreezeBy[unfreezeRound][msg.sender] = true;
         if(++unfreezeCounter >= leastConfirmThreshold){
             isFreezing = false;
-
-            // initialize
-            unfreezeCounter = 0;
-            for(uint256 i = 0; i < owners.length; i++){
-                if(unfreezeBy[owners[i]]){
-                    unfreezeBy[owners[i]] = false;
-                }
-            }
+            // start a new round for the next time
+            ++unfreezeRound;
         }
     }
 
