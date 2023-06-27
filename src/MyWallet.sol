@@ -30,7 +30,7 @@ contract MyWallet {
     mapping(address => bool) public isWhiteList;
     mapping(uint256 => mapping(address => bool)) public isConfirmed;
     bool public isFreezing;
-    uint256 private unfreezeCounter; // initial 0
+    uint256 private unfreezeCounter;
     uint256 public unfreezeRound;
     mapping(uint256 => mapping(address => bool)) public unfreezeBy;
 
@@ -171,6 +171,7 @@ contract MyWallet {
             isFreezing = false;
             // start a new round for the next time
             ++unfreezeRound;
+            unfreezeCounter = 0;
         }
     }
 
