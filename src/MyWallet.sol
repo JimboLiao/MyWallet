@@ -20,35 +20,61 @@ contract MyWallet {
         uint256 proposedTimestamp;
     }
 
+    struct Recovery {
+        uint256 replacedOwnerIndex;
+        address newOwner;
+        uint256 supportNum;
+    }
+
     /* state variables */
     uint256 public constant overTimeLimit = 1 days;
     address[] internal whiteList;
     address[] internal owners;
+    bytes32[] internal guardianHashes;
     Transaction[] internal transactionList;
+    Recovery internal recoveryProposed;
     uint256 public leastConfirmThreshold;
+    uint256 public recoverThreshold;
     mapping(address => bool) public isOwner;
     mapping(address => bool) public isWhiteList;
+    mapping(bytes32 => bool) public isGuardian;
     mapping(uint256 => mapping(address => bool)) public isConfirmed;
     bool public isFreezing;
+    bool public isRecovering;
     uint256 public unfreezeCounter;
     uint256 public unfreezeRound;
+    uint256 public recoverRound;
     mapping(uint256 => mapping(address => bool)) public unfreezeBy;
+    mapping(uint256 => mapping(address => bool)) public recoverBy;
 
     /* events */
     event ConfirmTransaction(address indexed sender, uint256 indexed transactionIndex);
     event ExecuteTransaction(uint256 indexed transactionIndex);
     event Receive(address indexed sender, uint256 indexed amount, uint256 indexed balance);
-    
+    event SubmitRecovery(uint256 indexed replacedOwnerIndex, address indexed newOwner, address proposer);
+    event ExecuteRecovery(address indexed oldOwner, address indexed newOwner);
+
     /* errors */
     error AlreadyUnfreezeBy(address addr);
+    error AlreadyRecoverBy(address addr);
+    error AlreadyAnOwner(address addr);
+    error AlreadyOnWhiteList(address addr);
+    error AlreadyAGuardian(bytes32 guardianHash);
+    error InvalidAddress();
     error ExecuteFailed();
     error InvalidTransactionIndex();
+    error WalletIsRecovering();
+    error WalletIsNotRecovering();
     error NotOwner();
+    error NotGuardian();
     error StatusNotPass();
     error TxAlreadyConfirmed();
     error TxAlreadyExecutedOrOverTime();
     error WalletFreezing();
     error WalletIsNotFrozen();
+    error SupportNumNotEnough();
+    error NoOwnerOrGuardian();
+    error InvalidThreshold();
 
     /* modifiers */
     modifier onlyOwner(){
@@ -65,26 +91,47 @@ contract MyWallet {
         _;
     }
 
+    modifier onlyGuardian() {
+        if(!isGuardian[keccak256(abi.encodePacked(msg.sender))]){
+            revert NotGuardian();
+        }
+        _;
+    }
+
     /* functions */
     /* constructor */
     constructor(
         address[] memory _owners,
         uint256 _leastConfirmThreshold,
+        bytes32[] memory _guardianHashes,
+        uint256 _recoverThreshold,
         address[] memory _whiteList
     )
     {
-        require(_owners.length > 0, "No owner assigned");
-        require(_owners.length <= 5, "Too many owners");
-        require(
-            _leastConfirmThreshold <= _owners.length && _leastConfirmThreshold > 0,
-            "Invalid confirm threshold"
-        );
+        if(_owners.length == 0 || _guardianHashes.length == 0) {
+            revert NoOwnerOrGuardian();
+        }
 
+        if(
+            _leastConfirmThreshold == 0 ||
+            _recoverThreshold == 0 ||
+            _leastConfirmThreshold > _owners.length ||
+            _recoverThreshold > _guardianHashes.length
+        ){
+            revert InvalidThreshold();
+        }
+
+        // owners
         for (uint256 i = 0; i < _owners.length; i++) {
             address owner = _owners[i];
 
-            require(owner != address(0), "Invalid owner");
-            require(!isOwner[owner], "Already is a owner");
+            if(owner == address(0)){
+                revert InvalidAddress();
+            }
+
+            if(isOwner[owner]){
+                revert AlreadyAnOwner(owner);
+            }
 
             isOwner[owner] = true;
             owners.push(owner);
@@ -92,12 +139,32 @@ contract MyWallet {
 
         leastConfirmThreshold = _leastConfirmThreshold;
 
+        // guardian hashes
+        for (uint256 i = 0; i < _guardianHashes.length; i++) {
+            bytes32 h = _guardianHashes[i];
+
+            if(isGuardian[h]){
+                revert AlreadyAGuardian(h);
+            }
+
+            isGuardian[h] = true;
+            guardianHashes.push(h);
+        }
+
+        recoverThreshold = _recoverThreshold;
+
+        // whitelist, if any
         if(_whiteList.length > 0){
             for (uint256 i = 0; i < _whiteList.length; i++) {
                 address whiteAddr = _whiteList[i];
 
-                require(whiteAddr != address(0), "Invalid white address");
-                require(!isWhiteList[whiteAddr], "Already on whiteList");
+                if(whiteAddr == address(0)){
+                    revert InvalidAddress();
+                }
+
+                if(isWhiteList[whiteAddr]){
+                    revert AlreadyOnWhiteList(whiteAddr);
+                }
 
                 isWhiteList[whiteAddr] = true;
                 whiteList.push(whiteAddr);
@@ -158,6 +225,20 @@ contract MyWallet {
         );
     }
 
+    function getRecoveryInfo() external view 
+        returns(
+            uint256, 
+            address, 
+            uint256
+        )
+    {
+        return (
+            recoveryProposed.replacedOwnerIndex,
+            recoveryProposed.newOwner,
+            recoveryProposed.supportNum
+        );
+    }
+
     function freezeWallet() external onlyOwner {
         isFreezing = true;
     }
@@ -178,6 +259,32 @@ contract MyWallet {
             ++unfreezeRound;
             unfreezeCounter = 0;
         }
+    }
+
+    function submitRecovery(
+        uint256 _replacedOwnerIndex,
+        address _newOwner
+    )
+        external
+        onlyGuardian
+    {
+        if(isRecovering){
+            revert WalletIsRecovering();
+        }
+
+        if(_newOwner == address(0)){
+            revert InvalidAddress();
+        }
+
+        if(isOwner[_newOwner]){
+            revert AlreadyAnOwner(_newOwner);
+        }
+
+        isRecovering = true;
+        recoveryProposed.replacedOwnerIndex = _replacedOwnerIndex;
+        recoveryProposed.newOwner = _newOwner;
+        recoveryProposed.supportNum = 0;
+        emit SubmitRecovery(_replacedOwnerIndex, _newOwner, msg.sender);
     }
 
     /* public functions */
@@ -235,6 +342,44 @@ contract MyWallet {
         }
 
         emit ExecuteTransaction(_transactionIndex);
+    }
+
+    function supportRecovery() public onlyGuardian{
+        if(!isRecovering){
+            revert WalletIsNotRecovering();
+        }
+
+        if(recoverBy[recoverRound][msg.sender]){
+            revert AlreadyRecoverBy(msg.sender);
+        }
+
+        recoverBy[recoverRound][msg.sender] = true;
+        ++recoveryProposed.supportNum;
+    }
+
+    function executeRecovery() public onlyOwner{
+        if(!isRecovering){
+            revert WalletIsNotRecovering();
+        }
+
+        if(recoveryProposed.supportNum < recoverThreshold){
+            revert SupportNumNotEnough();
+        }
+
+        // change owner
+        uint256 idx = recoveryProposed.replacedOwnerIndex;
+        address oldOwner = owners[idx];
+        address newOwner = recoveryProposed.newOwner;
+        isOwner[oldOwner] = false;
+        isOwner[newOwner] = true;
+        owners[idx] = newOwner;
+
+        // initial for next time
+        isRecovering = false;
+        ++recoverRound;
+        delete recoveryProposed;
+
+        emit ExecuteRecovery(oldOwner, newOwner);
     }
 
     /* internal functions */
