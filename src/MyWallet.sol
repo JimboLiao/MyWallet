@@ -48,6 +48,7 @@ contract MyWallet {
     error TxAlreadyConfirmed();
     error TxAlreadyExecutedOrOverTime();
     error WalletFreezing();
+    error WalletIsNotFrozen();
 
     /* modifiers */
     modifier onlyOwner(){
@@ -162,6 +163,10 @@ contract MyWallet {
     }
 
     function unfreezeWallet() external onlyOwner {
+        if(!isFreezing){
+            revert WalletIsNotFrozen();
+        }
+
         if(unfreezeBy[unfreezeRound][msg.sender]){
             revert AlreadyUnfreezeBy(msg.sender);
         }
