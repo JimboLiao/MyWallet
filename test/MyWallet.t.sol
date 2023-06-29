@@ -17,6 +17,7 @@ contract MyWalletTest is Test {
     uint256 constant confirmThreshold = 2;
     uint256 constant guardianNum = 3;
     uint256 constant recoverThreshold = 2;
+    uint256 constant timeLimit = 1 days;
     address[] owners;
     address[] guardians;
     address[] whiteList;
@@ -77,7 +78,7 @@ contract MyWalletTest is Test {
         assertEq(value, 0);
         assertEq(data, _data);
         assertEq(confirmNum, 1);
-        assertEq(timestamp, block.timestamp);
+        assertEq(timestamp, block.timestamp + timeLimit);
         assertTrue(wallet.isConfirmed(id, owners[0]));
     }
 
@@ -115,7 +116,7 @@ contract MyWalletTest is Test {
         assertEq(value, 0);
         assertEq(data, _data);
         assertEq(confirmNum, 2);
-        assertEq(timestamp, block.timestamp);
+        assertEq(timestamp, block.timestamp + timeLimit);
         assertTrue(wallet.isConfirmed(id, owners[0]));
         assertTrue(wallet.isConfirmed(id, owners[1]));
     }
@@ -186,7 +187,7 @@ contract MyWalletTest is Test {
         assertEq(value, amount);
         assertEq(data, _data);
         assertEq(confirmNum, 1);
-        assertEq(timestamp, block.timestamp);
+        assertEq(timestamp, block.timestamp + timeLimit);
         assertTrue(wallet.isConfirmed(id, owners[0]));
 
         // execute the transaction

@@ -17,7 +17,7 @@ contract MyWallet {
         uint256 value;
         bytes data;
         uint256 confirmNum;
-        uint256 proposedTimestamp;
+        uint256 untilTimestamp;
     }
 
     struct Recovery {
@@ -195,7 +195,7 @@ contract MyWallet {
                 value: _value,
                 data: _data,
                 confirmNum: 0,
-                proposedTimestamp: block.timestamp
+                untilTimestamp: block.timestamp + overTimeLimit
             })
         );
         // auto confirm transaction for who submit the transaction
@@ -221,7 +221,7 @@ contract MyWallet {
             txn.value,
             txn.data,
             txn.confirmNum,
-            txn.proposedTimestamp
+            txn.untilTimestamp
         );
     }
 
@@ -390,7 +390,7 @@ contract MyWallet {
             return TransactionStatus.EXECUTED;
         }
         // OVERTIME
-        if(block.timestamp > txn.proposedTimestamp + overTimeLimit){
+        if(block.timestamp > txn.untilTimestamp){
             return TransactionStatus.OVERTIME;
         }
         // PENDING or PASS
