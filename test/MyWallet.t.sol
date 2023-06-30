@@ -77,9 +77,8 @@ contract MyWalletTest is Test {
         assertEq(to, address(counter));
         assertEq(value, 0);
         assertEq(data, _data);
-        assertEq(confirmNum, 1);
+        assertEq(confirmNum, 0);
         assertEq(timestamp, block.timestamp + timeLimit);
-        assertTrue(wallet.isConfirmed(id, owners[0]));
     }
 
     function testSubmitBySomeone() public {
@@ -95,6 +94,10 @@ contract MyWalletTest is Test {
         // submit a transaction
         vm.startPrank(owners[0]);
         (bytes memory data, uint256 id) = submitTx();
+        // owners[0] confirm the transaction
+        vm.expectEmit(true, true, true, true, address(wallet));
+        emit ConfirmTransaction(address(owners[0]), id);
+        wallet.confirmTransaction(id);
         vm.stopPrank();
         // owners[1] confirm the transaction
         vm.startPrank(owners[1]);
@@ -138,6 +141,10 @@ contract MyWalletTest is Test {
         // submit a transaction
         vm.startPrank(owners[0]);
         (, uint256 id) = submitTx();
+        // owners[0] confirm the transaction
+        vm.expectEmit(true, true, true, true, address(wallet));
+        emit ConfirmTransaction(address(owners[0]), id);
+        wallet.confirmTransaction(id);
         vm.stopPrank();
         // owners[1] confirm the transaction
         vm.startPrank(owners[1]);
@@ -172,6 +179,10 @@ contract MyWalletTest is Test {
         uint256 amount = 1 ether;
         vm.startPrank(owners[0]);
         (bytes memory data, uint256 id) = submitTxWhiteList(amount);
+        // owners[0] confirm the transaction
+        vm.expectEmit(true, true, true, true, address(wallet));
+        emit ConfirmTransaction(address(owners[0]), id);
+        wallet.confirmTransaction(id);
         vm.stopPrank();
 
         // check effects
