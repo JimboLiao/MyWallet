@@ -5,6 +5,9 @@ import "forge-std/Test.sol";
 import "../src/MyWallet.sol";
 import "../src/Counter.sol";
 
+import {MockERC721} from "solmate/test/utils/mocks/MockERC721.sol";
+import {MockERC1155} from "solmate/test/utils/mocks/MockERC1155.sol";
+
 /** 
 * @dev In this test, we use 3 owners and at least 2 confirm to pass the multisig requirement
 * @dev also 3 guardians and at least 2 of their support to recover 
@@ -24,6 +27,8 @@ contract MyWalletTest is Test {
     address someone;
     MyWallet wallet;
     Counter counter;
+    MockERC721 mockErc721;
+    MockERC1155 mockErc1155;
 
     event ConfirmTransaction(address indexed sender, uint256 indexed transactionIndex);
     event ExecuteTransaction(uint256 indexed transactionIndex);
@@ -31,6 +36,7 @@ contract MyWalletTest is Test {
     event SubmitRecovery(uint256 indexed replacedOwnerIndex, address indexed newOwner, address proposer);
 
     function setUp() public {
+        // setting MyWallet
         setOwners(ownerNum);
         setGuardians();
         bytes32[] memory hashes = new bytes32[](guardianNum);
@@ -44,6 +50,15 @@ contract MyWalletTest is Test {
         wallet = new MyWallet(owners, confirmThreshold, hashes, recoverThreshold, whiteList);
         counter = new Counter();
         assertEq(wallet.leastConfirmThreshold(), confirmThreshold);
+
+        // setting test contracts
+        counter = new Counter();
+        mockErc721 = new MockERC721("MockERC721", "MERC721");
+        mockErc1155 = new MockERC1155();
+
+        vm.label(address(counter), "counter");
+        vm.label(address(mockErc721), "mockERC721");
+        vm.label(address(mockErc1155), "mockERC1155");
     }
 
     function testReceive() public {
@@ -165,12 +180,15 @@ contract MyWalletTest is Test {
         (, uint256 id) = submitTx();
         vm.stopPrank();
 
+        (MyWallet.TransactionStatus status, , , , , ) = wallet.getTransactionInfo(id);
+        require(status == MyWallet.TransactionStatus.PENDING, "status error");
+
         // overtime
         skip(1 days + 1);
 
         // check effects
         assertEq(id, 0);
-        (MyWallet.TransactionStatus status, , , , , ) = wallet.getTransactionInfo(id);
+        (status, , , , , ) = wallet.getTransactionInfo(id);
         require(status == MyWallet.TransactionStatus.OVERTIME, "status error");
     }
 
@@ -320,7 +338,30 @@ contract MyWalletTest is Test {
         assertEq(num, 0);
     }
 
-    // useful utilities 
+    function testErc721Receive() public {
+        // someone mint erc721 and transfer to wallet
+        vm.startPrank(someone);
+        uint256 tokenId = 0;
+        mockErc721.mint(someone, tokenId);
+        mockErc721.safeTransferFrom(someone, address(wallet), tokenId);
+        vm.stopPrank();
+
+        // check effects
+        assertEq(mockErc721.balanceOf(address(wallet)), 1);
+    }
+
+    function testErc1155Receive() public {
+        // someone mint erc1155 and transfer to wallet
+        vm.startPrank(someone);
+        uint256 tokenId = 0;
+        uint256 amount = 1;
+        mockErc1155.mint(someone, tokenId, amount, "");
+        mockErc1155.safeTransferFrom(someone, address(wallet), tokenId, amount, "");
+        vm.stopPrank();
+
+        // check effects
+        assertEq(mockErc1155.balanceOf(address(wallet), tokenId), 1);
+    }
     // make _n owners with INIT_BALANCE
     function setOwners(uint256 _n) internal {
         require(_n > 0, "one owner at least");

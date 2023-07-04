@@ -2,13 +2,17 @@
 pragma solidity 0.8.17;
 
 import "solmate/utils/ReentrancyGuard.sol";
+import "openzeppelin/token/ERC721/IERC721Receiver.sol";
+import "openzeppelin/token/ERC1155/IERC1155Receiver.sol";
+
 /**
  * @title MyWallet
- * @notice A contract wallet implement features including: multisig, social recovery and whitelist.
+ * @notice A contract wallet implement features including: multisig, social recovery, 
+ *  freeze wallet and whitelist.
  * Note: this is a final project for Appworks school blockchain program #2
  * @author Jimbo
  */
-contract MyWallet is ReentrancyGuard{
+contract MyWallet is ReentrancyGuard, IERC721Receiver, IERC1155Receiver{
     /**********************
      *   enum 
      **********************/
@@ -519,4 +523,43 @@ contract MyWallet is ReentrancyGuard{
         }
     }
 
+
+    /************************
+     *   Receive Tokens
+     ************************/
+    /**
+     * @notice IERC721Receiver
+     */
+    function onERC721Received(address, address, uint256, bytes memory) public pure override returns (bytes4) {
+        return this.onERC721Received.selector;
+    }
+
+    /**
+     * @notice IERC1155Receiver
+     */
+    function onERC1155Received(address, address, uint256, uint256, bytes calldata) external pure returns (bytes4) {
+        return this.onERC1155Received.selector;
+    }
+
+    /**
+     * @notice IERC1155Receiver
+     */
+    function onERC1155BatchReceived(address, address, uint256[] calldata, uint256[] calldata, bytes calldata) 
+        external pure returns (bytes4) {
+        return this.onERC1155BatchReceived.selector;
+    }
+
+    /**
+     * @dev Support for EIP 165
+     */
+    function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
+        if (
+            interfaceId == 0x01ffc9a7 || // ERC165 interfaceID
+            interfaceId == 0x150b7a02 || // ERC721TokenReceiver interfaceID
+            interfaceId == 0x4e2312e0 // ERC1155TokenReceiver interfaceID
+        ) {
+            return true;
+        }
+        return false;
+    }
 }
