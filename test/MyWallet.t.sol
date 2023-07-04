@@ -24,6 +24,7 @@ contract MyWalletTest is Test {
     address[] owners;
     address[] guardians;
     address[] whiteList;
+    bytes32[] guardianHashes;
     address someone;
     MyWallet wallet;
     Counter counter;
@@ -39,16 +40,14 @@ contract MyWalletTest is Test {
         // setting MyWallet
         setOwners(ownerNum);
         setGuardians();
-        bytes32[] memory hashes = new bytes32[](guardianNum);
         for(uint256 i = 0; i < guardianNum; i++) {
-            hashes[i] = keccak256(abi.encodePacked(guardians[i]));
+            guardianHashes.push(keccak256(abi.encodePacked(guardians[i])));
         }
         address whiteAddr = makeAddr("whiteAddr");
         someone = makeAddr("someone");
         vm.deal(someone, INIT_BALANCE);
         whiteList.push(whiteAddr);
-        wallet = new MyWallet(owners, confirmThreshold, hashes, recoverThreshold, whiteList);
-        counter = new Counter();
+        wallet = new MyWallet(owners, confirmThreshold, guardianHashes, recoverThreshold, whiteList);
         assertEq(wallet.leastConfirmThreshold(), confirmThreshold);
 
         // setting test contracts
@@ -56,6 +55,7 @@ contract MyWalletTest is Test {
         mockErc721 = new MockERC721("MockERC721", "MERC721");
         mockErc1155 = new MockERC1155();
 
+        vm.label(address(wallet), "MyWallet");
         vm.label(address(counter), "counter");
         vm.label(address(mockErc721), "mockERC721");
         vm.label(address(mockErc1155), "mockERC1155");
@@ -362,6 +362,70 @@ contract MyWalletTest is Test {
         // check effects
         assertEq(mockErc1155.balanceOf(address(wallet), tokenId), 1);
     }
+
+    function testAddWhiteList() public {
+        // submit add white list tx (add someone on white list)
+        vm.startPrank(owners[0]);
+        bytes memory data = abi.encodeCall(MyWallet.addWhiteList, (someone));
+        uint256 id = wallet.submitTransaction(address(wallet), 0, data);
+        vm.stopPrank();
+
+        // owners[0] and owners[1] confirm transaction
+        vm.prank(owners[0]);
+        wallet.confirmTransaction(id);
+        vm.prank(owners[1]);
+        wallet.confirmTransaction(id);
+
+        // execute transaction 
+        wallet.executeTransaction(id);
+
+        // check effects
+        assertTrue(wallet.isWhiteList(someone));
+    }
+
+    function testRemoveWhiteList() public {
+        // submit remove white list tx
+        vm.startPrank(owners[0]);
+        bytes memory data = abi.encodeCall(MyWallet.removeWhiteList, (whiteList[0]));
+        uint256 id = wallet.submitTransaction(address(wallet), 0, data);
+        vm.stopPrank();
+
+        // owners[0] and owners[1] confirm transaction
+        vm.prank(owners[0]);
+        wallet.confirmTransaction(id);
+        vm.prank(owners[1]);
+        wallet.confirmTransaction(id);
+
+        // execute transaction 
+        wallet.executeTransaction(id);
+
+        // check effects
+        assertFalse(wallet.isWhiteList(whiteList[0]));
+    }
+
+    function testReplaceGuardian() public {
+        // submit replaceGuardian tx (add someone as new guardian)
+        vm.startPrank(owners[0]);
+        bytes32 newGuardianHash = keccak256(abi.encodePacked(someone));
+        bytes memory data = abi.encodeCall(MyWallet.replaceGuardian, (guardianHashes[0], newGuardianHash));
+        uint256 id = wallet.submitTransaction(address(wallet), 0, data);
+        vm.stopPrank();
+
+        // owners[0] and owners[1] confirm transaction
+        vm.prank(owners[0]);
+        wallet.confirmTransaction(id);
+        vm.prank(owners[1]);
+        wallet.confirmTransaction(id);
+
+        // execute transaction 
+        wallet.executeTransaction(id);
+
+        // check effects
+        assertTrue(wallet.isGuardian(newGuardianHash));
+        assertFalse(wallet.isGuardian(guardianHashes[0]));
+    }
+
+    // utilities ====================================================
     // make _n owners with INIT_BALANCE
     function setOwners(uint256 _n) internal {
         require(_n > 0, "one owner at least");
@@ -397,4 +461,5 @@ contract MyWalletTest is Test {
         data = "";
         id = wallet.submitTransaction(whiteList[0], amount, data);
     }
+    //================================================================
 }

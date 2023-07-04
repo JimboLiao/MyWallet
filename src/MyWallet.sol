@@ -122,6 +122,21 @@ contract MyWallet is ReentrancyGuard, IERC721Receiver, IERC1155Receiver{
     /// @notice emitted when owner execute recovery
     event ExecuteRecovery(address indexed oldOwner, address indexed newOwner);
 
+    /// @notice emitted when add a new white list
+    event AddNewWhiteList(address indexed whiteAddr);
+
+    /// @notice emitted when remove a address from white list
+    event RemoveWhiteList(address indexed removeAddr);
+
+    /// @notice emitted when replace a guardian
+    event ReplaceGuardian(bytes32 indexed oldGuardianHash, bytes32 indexed newGuardianHash);
+
+    /// @notice emitted when freeze wallet
+    event FreezeWallet();
+
+    /// @notice emitted when wallet unfreeze succefully
+    event UnfreezeWallet();
+
     /**********************
      *   errors
      **********************/
@@ -137,6 +152,7 @@ contract MyWallet is ReentrancyGuard, IERC721Receiver, IERC1155Receiver{
     error WalletIsNotRecovering();
     error NotOwner();
     error NotGuardian();
+    error NotFromWallet();
     error StatusNotPass();
     error TxAlreadyConfirmed();
     error TxAlreadyExecutedOrOverTime();
@@ -145,6 +161,7 @@ contract MyWallet is ReentrancyGuard, IERC721Receiver, IERC1155Receiver{
     error SupportNumNotEnough();
     error NoOwnerOrGuardian();
     error InvalidThreshold();
+    error NotOnWhiteList();
 
     /* modifiers */
     modifier onlyOwner(){
@@ -157,6 +174,16 @@ contract MyWallet is ReentrancyGuard, IERC721Receiver, IERC1155Receiver{
     modifier onlyGuardian() {
         if(!isGuardian[keccak256(abi.encodePacked(msg.sender))]){
             revert NotGuardian();
+        }
+        _;
+    }
+
+    /**
+     * @dev for functions designed to be called by executeTransaction
+     */
+    modifier onlyExecuteByWallet() {
+        if(msg.sender != address(this)){
+            revert NotFromWallet();
         }
         _;
     }
@@ -221,17 +248,7 @@ contract MyWallet is ReentrancyGuard, IERC721Receiver, IERC1155Receiver{
         if(_whiteList.length > 0){
             for (uint256 i = 0; i < _whiteList.length; i++) {
                 address whiteAddr = _whiteList[i];
-
-                if(whiteAddr == address(0)){
-                    revert InvalidAddress();
-                }
-
-                if(isWhiteList[whiteAddr]){
-                    revert AlreadyOnWhiteList(whiteAddr);
-                }
-
-                isWhiteList[whiteAddr] = true;
-                whiteList.push(whiteAddr);
+                _addWhiteList(whiteAddr);
             }
         }
     }
@@ -329,8 +346,8 @@ contract MyWallet is ReentrancyGuard, IERC721Receiver, IERC1155Receiver{
         isConfirmed[_transactionIndex][msg.sender] = true;
         // PASS
         if(
-            ++txn.confirmNum >= leastConfirmThreshold || 
-            isWhiteList[txn.to]
+            ++txn.confirmNum >= leastConfirmThreshold || // over threshold
+            isWhiteList[txn.to] // on white list
         ){
             txn.status = TransactionStatus.PASS;
             emit TransactionPassed(_transactionIndex);
@@ -499,6 +516,8 @@ contract MyWallet is ReentrancyGuard, IERC721Receiver, IERC1155Receiver{
      */
     function freezeWallet() external onlyOwner {
         isFreezing = true;
+
+        emit FreezeWallet();
     }
 
     /**
@@ -520,7 +539,84 @@ contract MyWallet is ReentrancyGuard, IERC721Receiver, IERC1155Receiver{
             // start a new round for the next time
             ++unfreezeRound;
             unfreezeCounter = 0;
+
+            emit UnfreezeWallet();
         }
+    }
+
+    /************************
+     *   Argument functions
+     ************************/
+
+    /**
+     * @notice add a new address to whiteList
+     * @param _whiteAddr address to be added
+     * @dev only execute by executeTransaction, which means pass the multisig
+     */
+    function addWhiteList(address _whiteAddr) external onlyExecuteByWallet{
+        _addWhiteList(_whiteAddr);
+    }
+
+    function _addWhiteList(address _whiteAddr) internal {
+        // address(0) and wallet cannot on the whiteList
+        if(
+            _whiteAddr == address(this) ||
+            _whiteAddr == address(0)
+        ){
+            revert InvalidAddress();
+        }
+
+        if(isWhiteList[_whiteAddr]){
+            revert AlreadyOnWhiteList(_whiteAddr);
+        }
+
+        isWhiteList[_whiteAddr] = true;
+        whiteList.push(_whiteAddr);
+
+        emit AddNewWhiteList(_whiteAddr);
+    }
+    
+    /**
+     * @notice remove address from whiteList
+     * @param _removeAddr address to be removed
+     * @dev only execute by executeTransaction, which means pass the multisig
+     */
+    function removeWhiteList(address _removeAddr) external onlyExecuteByWallet{
+        _removeWhiteList(_removeAddr);
+    }
+
+    function _removeWhiteList(address _removeAddr) internal {
+        if(!isWhiteList[_removeAddr]){
+            revert NotOnWhiteList();
+        }
+
+        isWhiteList[_removeAddr] = false;
+        // todo is array whiteList necessary?
+
+        emit RemoveWhiteList(_removeAddr);
+    }
+
+    /**
+     * @notice replace guardian
+     * @param _oldGuardianHash hash of old guardian's address
+     * @param _newGuardianHash hash of new guardian's address
+     * @dev only execute by executeTransaction, which means pass the multisig
+     */
+    function replaceGuardian(bytes32 _oldGuardianHash, bytes32 _newGuardianHash) external onlyExecuteByWallet{
+        // cannot replace a guardian while recovering
+        if(isRecovering){
+            revert WalletIsRecovering();
+        }
+
+        if(!isGuardian[_oldGuardianHash]){
+            revert NotGuardian();
+        }
+
+        isGuardian[_oldGuardianHash] = false;
+        isGuardian[_newGuardianHash] = true;
+        // todo is array guardianHashes necessary?
+
+        emit ReplaceGuardian(_oldGuardianHash, _newGuardianHash);
     }
 
 
