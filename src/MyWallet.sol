@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.17;
 
-import "solmate/utils/ReentrancyGuard.sol";
-import "openzeppelin/token/ERC721/IERC721Receiver.sol";
-import "openzeppelin/token/ERC1155/IERC1155Receiver.sol";
+import {ReentrancyGuard} from "openzeppelin/security/ReentrancyGuard.sol";
+import {Initializable} from "openzeppelin/proxy/utils/Initializable.sol";
+import {IERC721Receiver} from "openzeppelin/token/ERC721/IERC721Receiver.sol";
+import {IERC1155Receiver} from "openzeppelin/token/ERC1155/IERC1155Receiver.sol";
+import {MyWalletStorage} from "./MyWalletStorage.sol";
+import {Proxiable} from "./Proxy/Proxiable.sol";
+
 
 /**
  * @title MyWallet
@@ -12,98 +16,13 @@ import "openzeppelin/token/ERC1155/IERC1155Receiver.sol";
  * Note: this is a final project for Appworks school blockchain program #2
  * @author Jimbo
  */
-contract MyWallet is ReentrancyGuard, IERC721Receiver, IERC1155Receiver{
-    /**********************
-     *   enum 
-     **********************/
-    ///@notice transaction status for multisig
-    enum TransactionStatus {
-        PENDING,
-        PASS,
-        EXECUTED,
-        OVERTIME
-    }
-
-    /**********************
-     *   struct
-     **********************/ 
-    ///@notice transaction infomation
-    struct Transaction {
-        TransactionStatus status;
-        address to; // target address to call
-        uint256 value; // value with the transaction
-        uint256 confirmNum; // confirmed number of multisig
-        uint256 untilTimestamp; // timelimit to pass the transaction
-        bytes data; // calldata
-    }
-
-    ///@notice Recovery infomation
-    struct Recovery {
-        address newOwner; // new owner after recovery
-        uint256 replacedOwnerIndex; // index of owner to be replaced
-        uint256 supportNum; // number of support recovery
-    }
-
-    /**********************
-     *   constant 
-     **********************/
-    ///@notice A time limit for multisig
-    uint256 public constant overTimeLimit = 1 days;
-
-    /**********************
-     *   variables
-     **********************/
-    /// @notice true if wallet is frozen
-    bool public isFreezing;
-
-    /// @notice true if wallet is in recovery process
-    bool public isRecovering;
-
-    address[] internal owners;
-    // todo need this?
-    address[] internal whiteList;
-
-    /// @notice guardian hashes to hide the id of guardians undil recovery
-    // todo need this?
-    bytes32[] internal guardianHashes;
-
-    /// @notice record every transaction submitted
-    Transaction[] internal transactionList;
-
-    /// @notice submitted recovery infomation
-    Recovery internal recoveryProposed;
-
-    /// @notice threshold for multisig and unfreeze
-    uint256 public leastConfirmThreshold;
-
-    /// @notice threshold for recovery
-    uint256 public recoverThreshold;
-
-    mapping(address => bool) public isOwner;
-    mapping(address => bool) public isWhiteList;
-    mapping(bytes32 => bool) public isGuardian;
-    uint256 public unfreezeCounter;
-    /// @notice current round of freeze
-    uint256 public unfreezeRound;
-
-    /// @notice current round of recovery
-    uint256 public recoverRound;
-
-    /// @notice true if already confirm tx
-    /// @dev tx index => owner address => bool
-    mapping(uint256 => mapping(address => bool)) public isConfirmed;
-
-    /// @notice true if already unfreeze by owner
-    /// @dev unfreezeRound => owner address => bool
-    mapping(uint256 => mapping(address => bool)) public unfreezeBy;
-
-    /// @notice true if already support recovery by guardian
-    /// @dev recoveryRound => guardian address => bool
-    mapping(uint256 => mapping(address => bool)) public recoverBy;
-
+contract MyWallet is Proxiable, ReentrancyGuard, Initializable, IERC721Receiver, IERC1155Receiver, MyWalletStorage{
     /**********************
      *   events 
      **********************/
+    /// @notice emitted when owner submit a tx
+    event SubmitTransaction(address indexed sender, uint256 indexed transactionIndex);
+
     /// @notice emitted when owner confirm a tx
     event ConfirmTransaction(address indexed sender, uint256 indexed transactionIndex);
 
@@ -163,7 +82,9 @@ contract MyWallet is ReentrancyGuard, IERC721Receiver, IERC1155Receiver{
     error InvalidThreshold();
     error NotOnWhiteList();
 
-    /* modifiers */
+    /**********************
+     *  modifiers 
+     **********************/
     modifier onlyOwner(){
         if(!isOwner[msg.sender]){
             revert NotOwner();
@@ -191,13 +112,20 @@ contract MyWallet is ReentrancyGuard, IERC721Receiver, IERC1155Receiver{
     /**********************
      *   constructor
      **********************/
-    constructor(
+    constructor() {
+        _disableInitializers();
+    }
+
+    /**********************
+     *   initialize
+     **********************/
+    function initialize(
         address[] memory _owners,
         uint256 _leastConfirmThreshold,
         bytes32[] memory _guardianHashes,
         uint256 _recoverThreshold,
         address[] memory _whiteList
-    )
+    ) public initializer
     {
         if(_owners.length == 0 || _guardianHashes.length == 0) {
             revert NoOwnerOrGuardian();
@@ -253,13 +181,6 @@ contract MyWallet is ReentrancyGuard, IERC721Receiver, IERC1155Receiver{
         }
     }
 
-    /**********************
-     *   receive
-     **********************/
-    receive() external payable {
-        emit Receive(msg.sender, msg.value, address(this).balance);
-    }
-
     /************************
      *   multisig functions
      ************************/
@@ -290,6 +211,8 @@ contract MyWallet is ReentrancyGuard, IERC721Receiver, IERC1155Receiver{
                 untilTimestamp: block.timestamp + overTimeLimit
             })
         );
+
+        emit SubmitTransaction(msg.sender, _transactionIndex);
     }
 
     /**
@@ -657,5 +580,18 @@ contract MyWallet is ReentrancyGuard, IERC721Receiver, IERC1155Receiver{
             return true;
         }
         return false;
+    }
+
+    /************************
+     *   UUPS upgrade
+     ************************/
+    function upgradeTo(address _newImpl) external onlyExecuteByWallet{
+        updateCodeAddress(_newImpl);
+    }
+
+    function upgradeToAndCall(address _newImpl, bytes memory data) external onlyExecuteByWallet{
+        updateCodeAddress(_newImpl);
+        (bool success,) = _newImpl.delegatecall(data);
+        require(success, "delegatecall failed");
     }
 }

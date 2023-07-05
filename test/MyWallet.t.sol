@@ -4,6 +4,7 @@ pragma solidity 0.8.17;
 import "forge-std/Test.sol";
 import "../src/MyWallet.sol";
 import "../src/Counter.sol";
+import "../src/MyWalletFactory.sol";
 
 import {MockERC721} from "solmate/test/utils/mocks/MockERC721.sol";
 import {MockERC1155} from "solmate/test/utils/mocks/MockERC1155.sol";
@@ -21,12 +22,14 @@ contract MyWalletTest is Test {
     uint256 constant guardianNum = 3;
     uint256 constant recoverThreshold = 2;
     uint256 constant timeLimit = 1 days;
+    uint256 constant salt = 1;
     address[] owners;
     address[] guardians;
     address[] whiteList;
     bytes32[] guardianHashes;
     address someone;
     MyWallet wallet;
+    MyWalletFactory factory;
     Counter counter;
     MockERC721 mockErc721;
     MockERC1155 mockErc1155;
@@ -47,7 +50,8 @@ contract MyWalletTest is Test {
         someone = makeAddr("someone");
         vm.deal(someone, INIT_BALANCE);
         whiteList.push(whiteAddr);
-        wallet = new MyWallet(owners, confirmThreshold, guardianHashes, recoverThreshold, whiteList);
+        factory = new MyWalletFactory();
+        wallet = factory.createAccount(owners, confirmThreshold, guardianHashes, recoverThreshold, whiteList, salt);
         assertEq(wallet.leastConfirmThreshold(), confirmThreshold);
 
         // setting test contracts
@@ -88,7 +92,7 @@ contract MyWalletTest is Test {
         bytes memory _data, 
         uint256 confirmNum, 
         uint256 timestamp) = wallet.getTransactionInfo(id);
-        require(status == MyWallet.TransactionStatus.PENDING, "status error");
+        require(status == MyWalletStorage.TransactionStatus.PENDING, "status error");
         assertEq(to, address(counter));
         assertEq(value, 0);
         assertEq(data, _data);
@@ -129,7 +133,7 @@ contract MyWalletTest is Test {
         uint256 confirmNum, 
         uint256 timestamp) = wallet.getTransactionInfo(id);
         // status should be PASS after 2 confirm
-        require(status == MyWallet.TransactionStatus.PASS, "status error");
+        require(status == MyWalletStorage.TransactionStatus.PASS, "status error");
         assertEq(to, address(counter));
         assertEq(value, 0);
         assertEq(data, _data);
@@ -181,7 +185,7 @@ contract MyWalletTest is Test {
         vm.stopPrank();
 
         (MyWallet.TransactionStatus status, , , , , ) = wallet.getTransactionInfo(id);
-        require(status == MyWallet.TransactionStatus.PENDING, "status error");
+        require(status == MyWalletStorage.TransactionStatus.PENDING, "status error");
 
         // overtime
         skip(1 days + 1);
@@ -189,7 +193,7 @@ contract MyWalletTest is Test {
         // check effects
         assertEq(id, 0);
         (status, , , , , ) = wallet.getTransactionInfo(id);
-        require(status == MyWallet.TransactionStatus.OVERTIME, "status error");
+        require(status == MyWalletStorage.TransactionStatus.OVERTIME, "status error");
     }
 
     function testSubmitTransactionToWhiteListAndExecute() public{
@@ -211,7 +215,7 @@ contract MyWalletTest is Test {
         bytes memory _data, 
         uint256 confirmNum, 
         uint256 timestamp) = wallet.getTransactionInfo(id);
-        require(status == MyWallet.TransactionStatus.PASS, "status error");
+        require(status == MyWalletStorage.TransactionStatus.PASS, "status error");
         assertEq(to, whiteList[0]);
         assertEq(value, amount);
         assertEq(data, _data);
