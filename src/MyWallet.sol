@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.17;
 
-import {ReentrancyGuard} from "openzeppelin/security/ReentrancyGuard.sol";
-import {Initializable} from "openzeppelin/proxy/utils/Initializable.sol";
-import {IERC721Receiver} from "openzeppelin/token/ERC721/IERC721Receiver.sol";
-import {IERC1155Receiver} from "openzeppelin/token/ERC1155/IERC1155Receiver.sol";
-import {MyWalletStorage} from "./MyWalletStorage.sol";
-import {Proxiable} from "./Proxy/Proxiable.sol";
+import { ReentrancyGuard } from "openzeppelin/security/ReentrancyGuard.sol";
+import { Initializable } from "openzeppelin/proxy/utils/Initializable.sol";
+import { IERC721Receiver } from "openzeppelin/token/ERC721/IERC721Receiver.sol";
+import { IERC1155Receiver } from "openzeppelin/token/ERC1155/IERC1155Receiver.sol";
+import { MyWalletStorage } from "./MyWalletStorage.sol";
+import { Proxiable } from "./Proxy/Proxiable.sol";
+import { EnumerableSet } from  "openzeppelin/utils/structs/EnumerableSet.sol";
 
 
 /**
@@ -17,6 +18,10 @@ import {Proxiable} from "./Proxy/Proxiable.sol";
  * @author Jimbo
  */
 contract MyWallet is Proxiable, ReentrancyGuard, Initializable, IERC721Receiver, IERC1155Receiver, MyWalletStorage{
+
+    using EnumerableSet for EnumerableSet.AddressSet;
+    using EnumerableSet for EnumerableSet.Bytes32Set;
+
     /**********************
      *   events 
      **********************/
@@ -36,7 +41,7 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, IERC721Receiver,
     event Receive(address indexed sender, uint256 indexed amount, uint256 indexed balance);
 
     /// @notice emitted when guardian submit recovery
-    event SubmitRecovery(uint256 indexed replacedOwnerIndex, address indexed newOwner, address proposer);
+    event SubmitRecovery(address indexed replacedOwner, address indexed newOwner, address proposer);
 
     /// @notice emitted when owner execute recovery
     event ExecuteRecovery(address indexed oldOwner, address indexed newOwner);
@@ -86,14 +91,14 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, IERC721Receiver,
      *  modifiers 
      **********************/
     modifier onlyOwner(){
-        if(!isOwner[msg.sender]){
+        if(!owners.contains(msg.sender)){
             revert NotOwner();
         }
         _;
     }
 
     modifier onlyGuardian() {
-        if(!isGuardian[keccak256(abi.encodePacked(msg.sender))]){
+        if(!guardianHashes.contains(keccak256(abi.encodePacked(msg.sender)))){
             revert NotGuardian();
         }
         _;
@@ -148,12 +153,9 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, IERC721Receiver,
                 revert InvalidAddress();
             }
 
-            if(isOwner[owner]){
+            if(!owners.add(owner)){
                 revert AlreadyAnOwner(owner);
             }
-
-            isOwner[owner] = true;
-            owners.push(owner);
         }
 
         leastConfirmThreshold = _leastConfirmThreshold;
@@ -162,12 +164,9 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, IERC721Receiver,
         for (uint256 i = 0; i < _guardianHashes.length; i++) {
             bytes32 h = _guardianHashes[i];
 
-            if(isGuardian[h]){
+            if(!guardianHashes.add(h)){
                 revert AlreadyAGuardian(h);
             }
-
-            isGuardian[h] = true;
-            guardianHashes.push(h);
         }
 
         recoverThreshold = _recoverThreshold;
@@ -270,7 +269,7 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, IERC721Receiver,
         // PASS
         if(
             ++txn.confirmNum >= leastConfirmThreshold || // over threshold
-            isWhiteList[txn.to] // on white list
+            whiteList.contains(txn.to) // on white list
         ){
             txn.status = TransactionStatus.PASS;
             emit TransactionPassed(_transactionIndex);
@@ -339,11 +338,11 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, IERC721Receiver,
      ************************/
     /**
      * @notice guardian submit recovery
-     * @param _replacedOwnerIndex the index of owners to be replaced
+     * @param _replacedOwner owner to be replaced
      * @param _newOwner address of new owner
      */
     function submitRecovery(
-        uint256 _replacedOwnerIndex,
+        address _replacedOwner,
         address _newOwner
     )
         external
@@ -357,15 +356,19 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, IERC721Receiver,
             revert InvalidAddress();
         }
 
-        if(isOwner[_newOwner]){
+        if(owners.contains(_newOwner)){
             revert AlreadyAnOwner(_newOwner);
         }
 
+        if(!owners.contains(_replacedOwner)){
+            revert NotOwner();
+        }
+
         isRecovering = true;
-        recoveryProposed.replacedOwnerIndex = _replacedOwnerIndex;
+        recoveryProposed.replacedOwner = _replacedOwner;
         recoveryProposed.newOwner = _newOwner;
         recoveryProposed.supportNum = 0;
-        emit SubmitRecovery(_replacedOwnerIndex, _newOwner, msg.sender);
+        emit SubmitRecovery(_replacedOwner, _newOwner, msg.sender);
     }
 
     /**
@@ -398,12 +401,10 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, IERC721Receiver,
         }
 
         // change owner
-        uint256 idx = recoveryProposed.replacedOwnerIndex;
-        address oldOwner = owners[idx];
+        address oldOwner = recoveryProposed.replacedOwner;
         address newOwner = recoveryProposed.newOwner;
-        isOwner[oldOwner] = false;
-        isOwner[newOwner] = true;
-        owners[idx] = newOwner;
+        owners.remove(oldOwner);
+        owners.add(newOwner);
 
         // initial for next time
         isRecovering = false;
@@ -418,13 +419,13 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, IERC721Receiver,
      */
     function getRecoveryInfo() external view 
         returns(
-            uint256, 
+            address, 
             address, 
             uint256
         )
     {
         return (
-            recoveryProposed.replacedOwnerIndex,
+            recoveryProposed.replacedOwner,
             recoveryProposed.newOwner,
             recoveryProposed.supportNum
         );
@@ -470,7 +471,7 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, IERC721Receiver,
     /************************
      *   Argument functions
      ************************/
-
+    
     /**
      * @notice add a new address to whiteList
      * @param _whiteAddr address to be added
@@ -482,6 +483,7 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, IERC721Receiver,
 
     function _addWhiteList(address _whiteAddr) internal {
         // address(0) and wallet cannot on the whiteList
+        // if wallet is on the whiteList, arguments can be modified by only one confirmation
         if(
             _whiteAddr == address(this) ||
             _whiteAddr == address(0)
@@ -489,12 +491,9 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, IERC721Receiver,
             revert InvalidAddress();
         }
 
-        if(isWhiteList[_whiteAddr]){
+        if(!whiteList.add(_whiteAddr)){
             revert AlreadyOnWhiteList(_whiteAddr);
         }
-
-        isWhiteList[_whiteAddr] = true;
-        whiteList.push(_whiteAddr);
 
         emit AddNewWhiteList(_whiteAddr);
     }
@@ -509,12 +508,9 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, IERC721Receiver,
     }
 
     function _removeWhiteList(address _removeAddr) internal {
-        if(!isWhiteList[_removeAddr]){
+        if(!whiteList.remove(_removeAddr)){
             revert NotOnWhiteList();
         }
-
-        isWhiteList[_removeAddr] = false;
-        // todo is array whiteList necessary?
 
         emit RemoveWhiteList(_removeAddr);
     }
@@ -531,18 +527,28 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, IERC721Receiver,
             revert WalletIsRecovering();
         }
 
-        if(!isGuardian[_oldGuardianHash]){
+        if(!guardianHashes.remove(_oldGuardianHash)){
             revert NotGuardian();
         }
 
-        isGuardian[_oldGuardianHash] = false;
-        isGuardian[_newGuardianHash] = true;
-        // todo is array guardianHashes necessary?
+        if(!guardianHashes.add(_newGuardianHash)){
+            revert AlreadyAGuardian(_newGuardianHash);
+        }
 
         emit ReplaceGuardian(_oldGuardianHash, _newGuardianHash);
     }
 
+    function isOwner(address _addr) external view returns(bool) {
+        return owners.contains(_addr);
+    }
 
+    function isGuardian(bytes32 _hash) external view returns(bool) {
+        return guardianHashes.contains(_hash);
+    }
+
+    function isWhiteList(address _addr) external view returns(bool){
+        return whiteList.contains(_addr);
+    }
     /************************
      *   Receive Tokens
      ************************/

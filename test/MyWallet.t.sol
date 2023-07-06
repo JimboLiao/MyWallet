@@ -6,8 +6,8 @@ import "../src/MyWallet.sol";
 import "../src/Counter.sol";
 import "../src/MyWalletFactory.sol";
 
-import {MockERC721} from "solmate/test/utils/mocks/MockERC721.sol";
-import {MockERC1155} from "solmate/test/utils/mocks/MockERC1155.sol";
+import { MockERC721 } from "solmate/test/utils/mocks/MockERC721.sol";
+import { MockERC1155 } from "solmate/test/utils/mocks/MockERC1155.sol";
 
 /** 
 * @dev In this test, we use 3 owners and at least 2 confirm to pass the multisig requirement
@@ -34,10 +34,18 @@ contract MyWalletTest is Test {
     MockERC721 mockErc721;
     MockERC1155 mockErc1155;
 
+    event SubmitTransaction(address indexed sender, uint256 indexed transactionIndex);
     event ConfirmTransaction(address indexed sender, uint256 indexed transactionIndex);
+    event TransactionPassed(uint256 indexed transactionIndex);
     event ExecuteTransaction(uint256 indexed transactionIndex);
     event Receive(address indexed sender, uint256 indexed amount, uint256 indexed balance);
-    event SubmitRecovery(uint256 indexed replacedOwnerIndex, address indexed newOwner, address proposer);
+    event SubmitRecovery(address indexed replacedOwner, address indexed newOwner, address proposer);
+    event ExecuteRecovery(address indexed oldOwner, address indexed newOwner);
+    event AddNewWhiteList(address indexed whiteAddr);
+    event RemoveWhiteList(address indexed removeAddr);
+    event ReplaceGuardian(bytes32 indexed oldGuardianHash, bytes32 indexed newGuardianHash);
+    event FreezeWallet();
+    event UnfreezeWallet();
 
     function setUp() public {
         // setting MyWallet
@@ -278,48 +286,35 @@ contract MyWalletTest is Test {
 
     function testSubmitRecovery() public {
         // submit recovery
-        address newOwner = makeAddr("newOwner");
-        uint256 replacedOwnerIndex = 2;
-        vm.prank(guardians[0]);
-        vm.expectEmit(true, true, true, true, address(wallet));
-        emit SubmitRecovery(replacedOwnerIndex, newOwner, guardians[0]);
-        wallet.submitRecovery(replacedOwnerIndex, newOwner);
+        (address replacedOwner, address newOwner) = submitRecovery();
 
         // check effects
-        (uint256 idx, address addr, uint256 num) = wallet.getRecoveryInfo();
-        assertEq(idx, replacedOwnerIndex);
-        assertEq(addr, newOwner);
+        (address addr1, address addr2, uint256 num) = wallet.getRecoveryInfo();
+        assertEq(addr1, replacedOwner);
+        assertEq(addr2, newOwner);
         assertEq(num, 0);
         assertTrue(wallet.isRecovering());
     }
 
     function testSupportRecovery() public {
         // submit recovery
-        address newOwner = makeAddr("newOwner");
-        uint256 replacedOwnerIndex = 2;
-        vm.prank(guardians[0]);
-        vm.expectEmit(true, true, true, true, address(wallet));
-        emit SubmitRecovery(replacedOwnerIndex, newOwner, guardians[0]);
-        wallet.submitRecovery(replacedOwnerIndex, newOwner);
+        (address replacedOwner, address newOwner) = submitRecovery();
 
         // support recovery
         vm.prank(guardians[0]);
         wallet.supportRecovery();
 
         // check effects
-        (, , uint256 num) = wallet.getRecoveryInfo();
+        (address addr1, address addr2, uint256 num) = wallet.getRecoveryInfo();
+        assertEq(addr1, replacedOwner);
+        assertEq(addr2, newOwner);
         assertEq(num, 1);
         assertTrue(wallet.recoverBy(0, guardians[0]));
     }
 
     function testExecuteRecovery() public {
         // submit recovery
-        address newOwner = makeAddr("newOwner");
-        uint256 replacedOwnerIndex = 2;
-        vm.prank(guardians[0]);
-        vm.expectEmit(true, true, true, true, address(wallet));
-        emit SubmitRecovery(replacedOwnerIndex, newOwner, guardians[0]);
-        wallet.submitRecovery(replacedOwnerIndex, newOwner);
+        (address replacedOwner, address newOwner) = submitRecovery();
 
         // support recovery
         vm.prank(guardians[0]);
@@ -333,12 +328,12 @@ contract MyWalletTest is Test {
 
         // check effects
         assertTrue(wallet.isOwner(newOwner));
-        assertFalse(wallet.isOwner(owners[replacedOwnerIndex]));
+        assertFalse(wallet.isOwner(replacedOwner));
         assertFalse(wallet.isRecovering());
         assertEq(wallet.recoverRound(), 1);
-        (uint256 idx, address addr, uint256 num) = wallet.getRecoveryInfo();
-        assertEq(idx, 0);
-        assertEq(addr, address(0));
+        (address addr1, address addr2, uint256 num) = wallet.getRecoveryInfo();
+        assertEq(addr1, address(0));
+        assertEq(addr2, address(0));
         assertEq(num, 0);
     }
 
@@ -464,6 +459,16 @@ contract MyWalletTest is Test {
     ){
         data = "";
         id = wallet.submitTransaction(whiteList[0], amount, data);
+    }
+
+    // submit recovery
+    function submitRecovery() public returns(address replacedOwner, address newOwner){
+        newOwner = makeAddr("newOwner");
+        replacedOwner = owners[2];
+        vm.prank(guardians[0]);
+        vm.expectEmit(true, true, true, true, address(wallet));
+        emit SubmitRecovery(replacedOwner, newOwner, guardians[0]);
+        wallet.submitRecovery(replacedOwner, newOwner);
     }
     //================================================================
 }

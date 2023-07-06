@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.17;
 
+import { EnumerableSet } from  "openzeppelin/utils/structs/EnumerableSet.sol";
+
 contract MyWalletStorage {
+    
     /**********************
      *   enum 
      **********************/
@@ -29,7 +32,7 @@ contract MyWalletStorage {
     ///@notice Recovery infomation
     struct Recovery {
         address newOwner; // new owner after recovery
-        uint256 replacedOwnerIndex; // index of owner to be replaced
+        address replacedOwner; // owner to be replaced
         uint256 supportNum; // number of support recovery
     }
 
@@ -48,13 +51,14 @@ contract MyWalletStorage {
     /// @notice true if wallet is in recovery process
     bool public isRecovering;
 
-    address[] internal owners;
-    // todo need this?
-    address[] internal whiteList;
+    /// @notice owners
+    EnumerableSet.AddressSet internal owners;
+
+    /// @notice whitelist addresses
+    EnumerableSet.AddressSet internal whiteList;
 
     /// @notice guardian hashes to hide the id of guardians undil recovery
-    // todo need this?
-    bytes32[] internal guardianHashes;
+    EnumerableSet.Bytes32Set internal guardianHashes;
 
     /// @notice record every transaction submitted
     Transaction[] internal transactionList;
@@ -68,10 +72,9 @@ contract MyWalletStorage {
     /// @notice threshold for recovery
     uint256 public recoverThreshold;
 
-    mapping(address => bool) public isOwner;
-    mapping(address => bool) public isWhiteList;
-    mapping(bytes32 => bool) public isGuardian;
+    /// @notice unfreeze counter of current round
     uint256 public unfreezeCounter;
+
     /// @notice current round of freeze
     uint256 public unfreezeRound;
 
