@@ -103,5 +103,7 @@ contract MyWalletStorage {
 }
 
 contract MyWalletStorageV2 is MyWalletStorage {
+    constructor(IEntryPoint _entryPoint) MyWalletStorage(_entryPoint) {}
+    
     uint256 public testNum;
 }

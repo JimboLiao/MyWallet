@@ -63,7 +63,7 @@ contract TestHelper is Test {
         vm.deal(someone, INIT_BALANCE);
         whiteList.push(whiteAddr);
         entryPoint = new EntryPoint();
-        factory = new MyWalletFactory();
+        factory = new MyWalletFactory(entryPoint);
         wallet = factory.createAccount(owners, confirmThreshold, guardianHashes, recoverThreshold, whiteList, salt);
         assertEq(wallet.leastConfirmThreshold(), confirmThreshold);
 

@@ -369,7 +369,7 @@ contract MyWalletTest is TestHelper {
 
     function testUUPSUpgrade() public {
         // submit tx to upgrade to V2
-        MyWalletV2ForTest newImpl = new MyWalletV2ForTest();
+        MyWalletV2ForTest newImpl = new MyWalletV2ForTest(entryPoint);
         vm.startPrank(owners[0]);
         bytes memory upgradeData = abi.encodeCall(MyWalletV2ForTest.initializeV2, ());
         bytes memory data = abi.encodeCall(MyWallet.upgradeToAndCall, (address(newImpl), upgradeData));
