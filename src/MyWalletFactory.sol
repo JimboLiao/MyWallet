@@ -3,6 +3,7 @@ pragma solidity ^0.8.12;
 
 import "openzeppelin/utils/Create2.sol";
 
+import { IEntryPoint } from "account-abstraction/interfaces/IEntryPoint.sol";
 import "./Proxy/UUPSProxy.sol";
 import "./MyWallet.sol";
 
@@ -16,8 +17,8 @@ import "./MyWallet.sol";
 contract MyWalletFactory {
     MyWallet public immutable accountImplementation;
 
-    constructor() {
-        accountImplementation = new MyWallet();
+    constructor(IEntryPoint _entryPoint) {
+        accountImplementation = new MyWallet(_entryPoint);
     }
 
     /**

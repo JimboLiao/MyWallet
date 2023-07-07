@@ -5,10 +5,15 @@ import { ReentrancyGuard } from "openzeppelin/security/ReentrancyGuard.sol";
 import { Initializable } from "openzeppelin/proxy/utils/Initializable.sol";
 import { IERC721Receiver } from "openzeppelin/token/ERC721/IERC721Receiver.sol";
 import { IERC1155Receiver } from "openzeppelin/token/ERC1155/IERC1155Receiver.sol";
-import { MyWalletStorage } from "./MyWalletStorage.sol";
-import { Proxiable } from "./Proxy/Proxiable.sol";
 import { EnumerableSet } from  "openzeppelin/utils/structs/EnumerableSet.sol";
+import { ECDSA } from "openzeppelin/utils/cryptography/ECDSA.sol";
+import { BaseAccount } from "account-abstraction/core/BaseAccount.sol";
+import { IEntryPoint } from "account-abstraction/interfaces/IEntryPoint.sol";
+import { UserOperation } from "account-abstraction/interfaces/UserOperation.sol";
+import { Proxiable } from "./Proxy/Proxiable.sol";
+import { MyWalletStorage } from "./MyWalletStorage.sol";
 
+import "forge-std/console.sol";
 
 /**
  * @title MyWallet
@@ -17,10 +22,11 @@ import { EnumerableSet } from  "openzeppelin/utils/structs/EnumerableSet.sol";
  * Note: this is a final project for Appworks school blockchain program #2
  * @author Jimbo
  */
-contract MyWallet is Proxiable, ReentrancyGuard, Initializable, IERC721Receiver, IERC1155Receiver, MyWalletStorage{
+contract MyWallet is Proxiable, ReentrancyGuard, Initializable, BaseAccount, IERC721Receiver, IERC1155Receiver, MyWalletStorage{
 
     using EnumerableSet for EnumerableSet.AddressSet;
     using EnumerableSet for EnumerableSet.Bytes32Set;
+    using ECDSA for bytes32;
 
     /**********************
      *   events 
@@ -120,7 +126,7 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, IERC721Receiver,
     /**********************
      *   constructor
      **********************/
-    constructor() {
+    constructor(IEntryPoint _entryPoint) MyWalletStorage(_entryPoint) {
         _disableInitializers();
     }
 
@@ -605,5 +611,55 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, IERC721Receiver,
         updateCodeAddress(_newImpl);
         (bool success,) = _newImpl.delegatecall(_data);
         require(success, "delegatecall failed");
+    }
+
+    /************************
+     *   ERC-4337
+     ************************/
+    // todo :
+    // 3. modify onlyOwner, onlyGuardian?
+
+    function entryPoint() public view virtual override returns (IEntryPoint){
+        return entryPointErc4337;
+    }
+
+    function _validateSignature(
+        UserOperation calldata _userOp,
+        bytes32 _userOpHash
+    )
+        internal
+        override
+        returns (uint256) 
+    {
+        _getUserOperationSigner(_userOp, _userOpHash);
+        bytes32 ethSignedMessageHash = _userOpHash.toEthSignedMessageHash();
+        address signer = ethSignedMessageHash.recover(_userOp.signature);
+
+        // signed by owner or guardian
+        if (owners.contains(signer) || guardianHashes.contains(keccak256(abi.encodePacked(signer)))){
+            return 0;
+        }
+        
+        return SIG_VALIDATION_FAILED;
+    }
+
+    function _validateNonce(uint256 _nonce) internal view override virtual {
+        require(_nonce < type(uint64).max);
+    }
+
+    function _getUserOperationSigner(
+        UserOperation calldata _userOp,
+        bytes32 _userOpHash
+    ) 
+        internal
+        returns(address signer)
+    {
+        bytes32 ethSignedMessageHash = _userOpHash.toEthSignedMessageHash();
+        signer = ethSignedMessageHash.recover(_userOp.signature);
+    }
+
+    function entryPointTestFunction() external view {
+        _requireFromEntryPoint();
+        console.log("\n entrypoint test function pass!!\n");
     }
 }

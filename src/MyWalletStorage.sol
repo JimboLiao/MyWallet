@@ -2,6 +2,7 @@
 pragma solidity 0.8.17;
 
 import { EnumerableSet } from  "openzeppelin/utils/structs/EnumerableSet.sol";
+import { IEntryPoint } from "account-abstraction/interfaces/IEntryPoint.sol";
 
 contract MyWalletStorage {
     
@@ -66,6 +67,9 @@ contract MyWalletStorage {
     /// @notice submitted recovery infomation
     Recovery internal recoveryProposed;
 
+    /// @notice entry point of ERC-4337
+    IEntryPoint internal immutable entryPointErc4337;
+
     /// @notice threshold for multisig and unfreeze
     uint256 public leastConfirmThreshold;
 
@@ -92,4 +96,8 @@ contract MyWalletStorage {
     /// @notice true if already support recovery by guardian
     /// @dev recoveryRound => guardian address => bool
     mapping(uint256 => mapping(address => bool)) public recoverBy;
+
+    constructor(IEntryPoint _entryPoint){
+        entryPointErc4337 = _entryPoint;
+    }
 }
