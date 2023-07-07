@@ -93,3 +93,7 @@ contract MyWalletStorage {
     /// @dev recoveryRound => guardian address => bool
     mapping(uint256 => mapping(address => bool)) public recoverBy;
 }
+
+contract MyWalletStorageV2 is MyWalletStorage {
+    uint256 public testNum;
+}
