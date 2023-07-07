@@ -61,6 +61,9 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, IERC721Receiver,
     /// @notice emitted when wallet unfreeze succefully
     event UnfreezeWallet();
 
+    /// @notice emitted when initialization
+    event Initialized();
+
     /**********************
      *   errors
      **********************/
@@ -178,6 +181,8 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, IERC721Receiver,
                 _addWhiteList(whiteAddr);
             }
         }
+
+        emit Initialized();
     }
 
     /************************
@@ -549,6 +554,7 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, IERC721Receiver,
     function isWhiteList(address _addr) external view returns(bool){
         return whiteList.contains(_addr);
     }
+
     /************************
      *   Receive Tokens
      ************************/
@@ -577,11 +583,11 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, IERC721Receiver,
     /**
      * @dev Support for EIP 165
      */
-    function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
+    function supportsInterface(bytes4 _interfaceId) external pure returns (bool) {
         if (
-            interfaceId == 0x01ffc9a7 || // ERC165 interfaceID
-            interfaceId == 0x150b7a02 || // ERC721TokenReceiver interfaceID
-            interfaceId == 0x4e2312e0 // ERC1155TokenReceiver interfaceID
+            _interfaceId == 0x01ffc9a7 || // ERC165 interfaceID
+            _interfaceId == 0x150b7a02 || // ERC721TokenReceiver interfaceID
+            _interfaceId == 0x4e2312e0 // ERC1155TokenReceiver interfaceID
         ) {
             return true;
         }
@@ -595,9 +601,9 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, IERC721Receiver,
         updateCodeAddress(_newImpl);
     }
 
-    function upgradeToAndCall(address _newImpl, bytes memory data) external onlyExecuteByWallet{
+    function upgradeToAndCall(address _newImpl, bytes memory _data) external onlyExecuteByWallet{
         updateCodeAddress(_newImpl);
-        (bool success,) = _newImpl.delegatecall(data);
+        (bool success,) = _newImpl.delegatecall(_data);
         require(success, "delegatecall failed");
     }
 }
