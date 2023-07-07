@@ -5,6 +5,7 @@ import { TestHelper } from "./Helper/TestHelper.t.sol";
 import { Counter } from "../src/Counter.sol";
 import { MyWallet } from "../src/MyWallet.sol";
 import { MyWalletStorage } from "../src/MyWalletStorage.sol";
+import { MyWalletV2ForTest } from "../src/MyWalletV2ForTest.sol";
 
 /** 
  * @dev test directly interact with MyWallet through EOA
@@ -367,10 +368,11 @@ contract MyWalletTest is TestHelper {
     }
 
     function testUUPSUpgrade() public {
-        // submitn tx (add someone as new guardian)
+        // submit tx to upgrade to V2
+        MyWalletV2ForTest newImpl = new MyWalletV2ForTest();
         vm.startPrank(owners[0]);
-        bytes32 newGuardianHash = keccak256(abi.encodePacked(someone));
-        bytes memory data = abi.encodeCall(MyWallet.replaceGuardian, (guardianHashes[0], newGuardianHash));
+        bytes memory upgradeData = abi.encodeCall(MyWalletV2ForTest.initializeV2, ());
+        bytes memory data = abi.encodeCall(MyWallet.upgradeToAndCall, (address(newImpl), upgradeData));
         uint256 id = wallet.submitTransaction(address(wallet), 0, data);
         vm.stopPrank();
 
@@ -379,6 +381,12 @@ contract MyWalletTest is TestHelper {
         wallet.confirmTransaction(id);
         vm.prank(owners[1]);
         wallet.confirmTransaction(id);
+
+        // execute transaction 
+        wallet.executeTransaction(id);
+
+        // check effects
+        assertEq(MyWalletV2ForTest(address(wallet)).testNum(), 2);
     }
 
     // utilities ====================================================

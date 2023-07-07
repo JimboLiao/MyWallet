@@ -101,3 +101,7 @@ contract MyWalletStorage {
         entryPointErc4337 = _entryPoint;
     }
 }
+
+contract MyWalletStorageV2 is MyWalletStorage {
+    uint256 public testNum;
+}
