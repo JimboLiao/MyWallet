@@ -628,6 +628,7 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, BaseAccount, IER
         bytes32 _userOpHash
     )
         internal
+        view
         override
         returns (uint256) 
     {
@@ -652,6 +653,7 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, BaseAccount, IER
         bytes32 _userOpHash
     ) 
         internal
+        pure
         returns(address signer)
     {
         bytes32 ethSignedMessageHash = _userOpHash.toEthSignedMessageHash();
