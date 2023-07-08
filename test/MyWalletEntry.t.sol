@@ -33,7 +33,7 @@ contract MyWalletEntryTest is TestHelper {
         // create userOperation
         vm.startPrank(owners[0]);
         address sender = address(wallet);
-        uint256 nonce = 0;
+        uint256 nonce = entryPoint.getNonce(address(wallet), 0);
         bytes memory initCode = "";
         bytes memory callData = abi.encodeCall(MyWallet.entryPointTestFunction, ());
         UserOperation memory userOp = createUserOperation(sender, nonce, initCode, callData);
@@ -51,6 +51,9 @@ contract MyWalletEntryTest is TestHelper {
     }
 
     function testEntryHandleOp() public {
+        assertEq(address(wallet).balance, 0);
+        uint256 balanceBefore = bundler.balance;
+
         // create userOperation
         vm.startPrank(owners[0]);
         address sender = address(wallet);
@@ -62,11 +65,15 @@ contract MyWalletEntryTest is TestHelper {
         userOp.signature = signUserOp(userOp, ownerKeys[0]);
         vm.stopPrank();
 
+        // bundler send operation to entryPoint
         UserOperation[] memory ops;
         ops = new UserOperation[](1);
         ops[0] = userOp;
         vm.prank(bundler);
         entryPoint.handleOps(ops, payable(bundler));
+        
+        // bundler got compensate payment
+        assertGt(bundler.balance, balanceBefore);
     }
 
     // utilities ====================================================
