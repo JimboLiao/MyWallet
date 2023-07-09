@@ -2,7 +2,6 @@
 pragma solidity 0.8.17;
 
 import { TestHelper } from "./Helper/TestHelper.t.sol";
-import { Counter } from "../src/Counter.sol";
 import { MyWallet } from "../src/MyWallet.sol";
 import { MyWalletStorage } from "../src/MyWalletStorage.sol";
 import { MyWalletV2ForTest } from "../src/MyWalletV2ForTest.sol";
@@ -387,32 +386,5 @@ contract MyWalletTest is TestHelper {
 
         // check effects
         assertEq(MyWalletV2ForTest(address(wallet)).testNum(), 2);
-    }
-
-    // utilities ====================================================
-    // submit transaction to call Counter's increment function
-    function submitTx() public returns(bytes memory data, uint256 id){
-        data = abi.encodeCall(Counter.increment, ());
-        id = wallet.submitTransaction(address(counter), 0, data);
-    }
-
-    // submit transaction to send whiteList[0] 1 ether
-    function submitTxWhiteList(uint256 amount) public 
-    returns(
-        bytes memory data,
-        uint256 id
-    ){
-        data = "";
-        id = wallet.submitTransaction(whiteList[0], amount, data);
-    }
-
-    // submit recovery
-    function submitRecovery() public returns(address replacedOwner, address newOwner){
-        newOwner = makeAddr("newOwner");
-        replacedOwner = owners[2];
-        vm.prank(guardians[0]);
-        vm.expectEmit(true, true, true, true, address(wallet));
-        emit SubmitRecovery(replacedOwner, newOwner, guardians[0]);
-        wallet.submitRecovery(replacedOwner, newOwner);
     }
 }

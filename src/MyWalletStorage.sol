@@ -43,6 +43,34 @@ contract MyWalletStorage {
     ///@notice A time limit for multisig
     uint256 public constant overTimeLimit = 1 days;
 
+    /// @notice type hash submit transaction
+    // transactionTypeHash = keccak256("Transaction(address to,uint256 value,bytes data,uint256 nonce,uint256 expiry)");
+    bytes32 public constant transactionTypeHash = 0xbc324d7cf0904e0cd603eb9343c1a9fba4b33073524cb54fb43e3d081e1fcd49;
+
+    /// @notice type hash confirm transaction
+    // confirmTypeHash = keccak256("Confirm(uint256 transactionIndex,uint256 nonce,uint256 expiry)");
+    bytes32 public constant confirmTypeHash = 0x69e415fc8bf477fb310f448601509abf73ec39720f1ded109fb5f0c2404746fb;
+
+    /// @notice type hash of submit Recovery
+    // recoveryTypeHash = keccak256("Recovery(address replacedOwner,address newOwner,uint256 nonce,uint256 expiry)");
+    bytes32 public constant recoveryTypeHash = 0xf22d4e9321e685dd9f081439bcea89d34c2356cae21bac61131f63aa487504b7;
+
+    /// @notice type hash of support Recovery
+    // supportTypeHash = keccak256("Support(uint256 nonce,uint256 expiry)");
+    bytes32 public constant supportTypeHash = 0x1c4c70d4ea4c7f9cf28a4ab9413f346cc7a2775791591ff7a80ed20e69cc52d3;
+
+    /// @notice type hash of support Recovery
+    // executeRecoveryTypeHash = keccak256("ExecuteRecovery(uint256 nonce,uint256 expiry)");
+    bytes32 public constant executeRecoveryTypeHash = 0x7d0bb67a0ad275e7f5e5fb312d6270dfd94a894fda0a7b78b615442b4f2196a7;
+
+    /// @notice type hash of freeze wallet
+    // freezeTypeHash = keccak256("Freeze(uint256 nonce,uint256 expiry)");
+    bytes32 public constant freezeTypeHash = 0x4bd89d51172e4e922fc8ee675198fe0d119b7703fab3d1cc5196b5260050f9ab;
+
+    /// @notice type hash of unfreeze wallet
+    // unfreezeTypeHash = keccak256("Unfreeze(uint256 nonce,uint256 expiry)");
+    bytes32 public constant unfreezeTypeHash = 0x476ca6dfd610f443acd2e659c0cddeafa57c87e0871a584dd4a4b19be27dda57;
+
     /**********************
      *   variables
      **********************/
@@ -69,6 +97,9 @@ contract MyWalletStorage {
 
     /// @notice entry point of ERC-4337
     IEntryPoint internal immutable entryPointErc4337;
+
+    /// @notice domain seperator for EIP-712
+    bytes32 internal domainSeparator;
 
     /// @notice threshold for multisig and unfreeze
     uint256 public leastConfirmThreshold;
@@ -104,6 +135,6 @@ contract MyWalletStorage {
 
 contract MyWalletStorageV2 is MyWalletStorage {
     constructor(IEntryPoint _entryPoint) MyWalletStorage(_entryPoint) {}
-    
+
     uint256 public testNum;
 }
