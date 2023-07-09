@@ -52,6 +52,12 @@ contract MyWalletStorage {
     /// @notice true if wallet is in recovery process
     bool public isRecovering;
 
+    /// @notice owner signed userOperation 
+    address internal signedByOwner;
+
+    /// @notice guardian signed userOperation 
+    address internal signedByGuardian;
+
     /// @notice owners
     EnumerableSet.AddressSet internal owners;
 

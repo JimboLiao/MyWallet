@@ -100,14 +100,29 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, BaseAccount, IER
      *  modifiers 
      **********************/
     modifier onlyOwner(){
-        if(!owners.contains(msg.sender)){
+        if (msg.sender == address(entryPointErc4337)){
+
+            if (signedByOwner == address(0)){
+                resetSignedByGuardian();
+                revert NotOwner();
+            }
+
+        }else if(!owners.contains(msg.sender)){
             revert NotOwner();
         }
         _;
     }
 
     modifier onlyGuardian() {
-        if(!guardianHashes.contains(keccak256(abi.encodePacked(msg.sender)))){
+        if (msg.sender == address(entryPointErc4337)){
+            console.log("signedByGuardian in onlyGuardian = %s", signedByGuardian);
+            if (signedByGuardian == address(0)){
+                resetSignedByOwner();
+                revert NotGuardian();
+            }
+        }else if(
+            !guardianHashes.contains(keccak256(abi.encodePacked(msg.sender)))
+        ){
             revert NotGuardian();
         }
         _;
@@ -210,6 +225,23 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, BaseAccount, IER
         onlyOwner
         returns(uint256 _transactionIndex)
     {
+        if(msg.sender == address(entryPointErc4337)){
+            _transactionIndex = _submitTransaction(_to, _value, _data, signedByOwner);
+            resetSignedByOwner();
+        } else {
+            _transactionIndex = _submitTransaction(_to, _value, _data, msg.sender);
+        }
+    }
+
+    function _submitTransaction(
+        address _to,
+        uint256 _value,
+        bytes calldata _data,
+        address _owner
+    ) 
+        internal 
+        returns(uint256 _transactionIndex) 
+    {
         _transactionIndex = transactionList.length;
         transactionList.push(
             Transaction({
@@ -222,7 +254,7 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, BaseAccount, IER
             })
         );
 
-        emit SubmitTransaction(msg.sender, _transactionIndex);
+        emit SubmitTransaction(_owner, _transactionIndex);
     }
 
     /**
@@ -260,9 +292,18 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, BaseAccount, IER
         public
         onlyOwner
     {
+        if(msg.sender == address(entryPointErc4337)){
+            _confirmTransaction(_transactionIndex, signedByOwner);
+            resetSignedByOwner();
+        } else {
+            _confirmTransaction(_transactionIndex, msg.sender);
+        }
+    }
+
+    function _confirmTransaction(uint256 _transactionIndex, address _owner) internal {
         _isIndexValid(_transactionIndex);
         // already confirmed
-        if(isConfirmed[_transactionIndex][msg.sender]){
+        if(isConfirmed[_transactionIndex][_owner]){
             revert TxAlreadyConfirmed();
         }
 
@@ -276,7 +317,7 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, BaseAccount, IER
         }
 
         Transaction storage txn = transactionList[_transactionIndex];
-        isConfirmed[_transactionIndex][msg.sender] = true;
+        isConfirmed[_transactionIndex][_owner] = true;
         // PASS
         if(
             ++txn.confirmNum >= leastConfirmThreshold || // over threshold
@@ -286,7 +327,7 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, BaseAccount, IER
             emit TransactionPassed(_transactionIndex);
         }
         // else, txn.status remains PENDING
-        emit ConfirmTransaction(msg.sender, _transactionIndex);
+        emit ConfirmTransaction(_owner, _transactionIndex);
     }
 
     /**
@@ -298,6 +339,15 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, BaseAccount, IER
         public
         nonReentrant
     {
+        if (msg.sender == address(entryPointErc4337)) {
+            resetSignedByGuardian();
+            resetSignedByOwner();
+        }
+        
+        _executeTransaction(_transactionIndex);
+    }
+
+    function _executeTransaction(uint256 _transactionIndex) internal {
         _isIndexValid(_transactionIndex);
         if(isFreezing){
             revert WalletFreezing();
@@ -359,6 +409,21 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, BaseAccount, IER
         external
         onlyGuardian
     {
+        if(msg.sender == address(entryPointErc4337)){
+            _submitRecovery(_replacedOwner, _newOwner, signedByGuardian);
+            resetSignedByGuardian();
+        } else {
+            _submitRecovery(_replacedOwner, _newOwner, msg.sender);
+        }
+    }
+
+    function _submitRecovery(
+        address _replacedOwner,
+        address _newOwner,
+        address _proposer
+    )
+        internal
+    {
         if(isRecovering){
             revert WalletIsRecovering();
         }
@@ -379,22 +444,32 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, BaseAccount, IER
         recoveryProposed.replacedOwner = _replacedOwner;
         recoveryProposed.newOwner = _newOwner;
         recoveryProposed.supportNum = 0;
-        emit SubmitRecovery(_replacedOwner, _newOwner, msg.sender);
+
+        emit SubmitRecovery(_replacedOwner, _newOwner, _proposer);
     }
 
     /**
      * @notice guardian support recovery
      */
     function supportRecovery() public onlyGuardian{
+        if(msg.sender == address(entryPointErc4337)){
+            _supportRecovery(signedByGuardian);
+            resetSignedByGuardian();
+        } else {
+            _supportRecovery(msg.sender);
+        }
+    }
+
+    function _supportRecovery(address _supporter) internal {
         if(!isRecovering){
             revert WalletIsNotRecovering();
         }
 
-        if(recoverBy[recoverRound][msg.sender]){
-            revert AlreadyRecoverBy(msg.sender);
+        if(recoverBy[recoverRound][_supporter]){
+            revert AlreadyRecoverBy(_supporter);
         }
 
-        recoverBy[recoverRound][msg.sender] = true;
+        recoverBy[recoverRound][_supporter] = true;
         ++recoveryProposed.supportNum;
     }
 
@@ -403,6 +478,15 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, BaseAccount, IER
      * @dev only owner can execute recovery after support num >= recoverThreshold
      */
     function executeRecovery() public onlyOwner {
+        if(msg.sender == address(entryPointErc4337)){
+            _executeRecovery();
+            resetSignedByOwner();
+        } else {
+            _executeRecovery();
+        }
+    }
+
+    function _executeRecovery() internal {
         if(!isRecovering){
             revert WalletIsNotRecovering();
         }
@@ -450,6 +534,15 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, BaseAccount, IER
      * @notice freeze wallet
      */
     function freezeWallet() external onlyOwner {
+        if(msg.sender == address(entryPointErc4337)){
+            _freezeWallet();
+            resetSignedByOwner();
+        } else {
+            _freezeWallet();
+        }
+    }
+
+    function _freezeWallet() internal {
         isFreezing = true;
 
         emit FreezeWallet();
@@ -460,15 +553,24 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, BaseAccount, IER
      * @dev the wallet will not unfreeze until unfreezeCounter >= leastConfirmThreshold
      */
     function unfreezeWallet() external onlyOwner {
+        if(msg.sender == address(entryPointErc4337)){
+            _unfreezeWallet(signedByOwner);
+            resetSignedByOwner();
+        } else {
+            _unfreezeWallet(msg.sender);
+        }
+    }
+
+    function _unfreezeWallet(address _owner) internal {
         if(!isFreezing){
             revert WalletIsNotFrozen();
         }
 
-        if(unfreezeBy[unfreezeRound][msg.sender]){
-            revert AlreadyUnfreezeBy(msg.sender);
+        if(unfreezeBy[unfreezeRound][_owner]){
+            revert AlreadyUnfreezeBy(_owner);
         }
 
-        unfreezeBy[unfreezeRound][msg.sender] = true;
+        unfreezeBy[unfreezeRound][_owner] = true;
         if(++unfreezeCounter >= leastConfirmThreshold){
             isFreezing = false;
             // start a new round for the next time
@@ -561,6 +663,14 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, BaseAccount, IER
         return whiteList.contains(_addr);
     }
 
+    function resetSignedByOwner() internal {
+        signedByOwner = address(0);
+    }
+
+    function resetSignedByGuardian() internal {
+        signedByGuardian = address(0);
+    }
+
     /************************
      *   Receive Tokens
      ************************/
@@ -616,19 +726,27 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, BaseAccount, IER
     /************************
      *   ERC-4337
      ************************/
-    // todo :
-    // 3. modify onlyOwner, onlyGuardian?
-
     function entryPoint() public view virtual override returns (IEntryPoint){
         return entryPointErc4337;
     }
 
+    /**
+     * @notice validate signature of userOp
+     * @dev return value is composed of validAfter, validUntil, aggregator
+     * @dev just check pass or not and unlimited timestamp
+     *       [ 6 bytes   +   6 bytes  +   20 bytes ]
+     *       [validAfter + validUntil +  aggregator]
+     *       if aggregator = 0 : pass validate
+     *                     = 1 : fail validate
+     *                     = address : agregator address
+     *       validUntil : 6-byte timestamp value, or zero for “infinite”. 
+     *       validAfter : 6-byte timestamp. The UserOp is valid only after this time.
+     */
     function _validateSignature(
         UserOperation calldata _userOp,
         bytes32 _userOpHash
     )
         internal
-        view
         override
         returns (uint256) 
     {
@@ -636,8 +754,15 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, BaseAccount, IER
         bytes32 ethSignedMessageHash = _userOpHash.toEthSignedMessageHash();
         address signer = ethSignedMessageHash.recover(_userOp.signature);
 
-        // signed by owner or guardian
-        if (owners.contains(signer) || guardianHashes.contains(keccak256(abi.encodePacked(signer)))){
+        // signed by owner
+        if (owners.contains(signer)){
+            signedByOwner = signer;
+            return 0;
+        }
+
+        // signed by guardian
+        if (guardianHashes.contains(keccak256(abi.encodePacked(signer)))){
+            signedByGuardian = signer;
             return 0;
         }
         
@@ -660,8 +785,4 @@ contract MyWallet is Proxiable, ReentrancyGuard, Initializable, BaseAccount, IER
         signer = ethSignedMessageHash.recover(_userOp.signature);
     }
 
-    function entryPointTestFunction() external view {
-        _requireFromEntryPoint();
-        console.log("\n entrypoint test function pass!!\n");
-    }
 }
