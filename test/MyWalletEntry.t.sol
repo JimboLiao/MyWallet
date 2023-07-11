@@ -6,6 +6,7 @@ import { Counter } from "../src/Counter.sol";
 import { MyWallet } from "../src/MyWallet.sol";
 import { MyWalletStorage } from "../src/MyWalletStorage.sol";
 import { UserOperation } from "account-abstraction/interfaces/UserOperation.sol";
+import { MyWalletFactory } from "../src/MyWalletFactory.sol";
 import "forge-std/console.sol";
 
 /** 
@@ -14,13 +15,14 @@ import "forge-std/console.sol";
  */ 
 
 contract MyWalletEntryTest is TestHelper {
+    uint256 constant DEPOSIT_VALUE = 5 ether;
     function setUp() public override {
         super.setUp();
 
         // deposit eth for wallet
         vm.prank(owners[0]);
-        entryPoint.depositTo{value: 5 ether}(address(wallet));
-        assertEq(entryPoint.balanceOf(address(wallet)), 5 ether);
+        entryPoint.depositTo{value: DEPOSIT_VALUE}(address(wallet));
+        assertEq(entryPoint.balanceOf(address(wallet)), DEPOSIT_VALUE);
     }
 
     function testEntrySimulateValidation() public {
@@ -46,8 +48,55 @@ contract MyWalletEntryTest is TestHelper {
         vm.startPrank(bundler);
         vm.expectRevert();
         entryPoint.simulateValidation(userOp); // should be done offchain
-        // "ValidationResult((58755, 7100000000000000, false, 0, 281474976710655, 0x), (0, 0), (0, 0), (0, 0))"
+        // "ValidationResult((58755, 16100000000000000, false, 0, 281474976710655, 0x), (0, 0), (0, 0), (0, 0))"
         vm.stopPrank();
+    }
+
+    // use userOperation to create a new wallet
+    function testCreateWallet() public {
+        // create userOperation
+        // get account address before create
+        vm.startPrank(owners[0]);
+        address sender = factory.getAddress(
+                owners, 
+                confirmThreshold, 
+                guardianHashes, 
+                recoverThreshold, 
+                whiteList, 
+                123
+                );
+        uint256 nonce = 0;
+        bytes memory data = abi.encodeCall(
+            MyWalletFactory.createAccount, 
+            (
+                owners, 
+                confirmThreshold, 
+                guardianHashes, 
+                recoverThreshold, 
+                whiteList, 
+                123
+                ));
+        bytes memory initCode = abi.encodePacked(address(factory), data);
+        UserOperation memory userOp = createUserOperation(sender, nonce, initCode, "");
+        // sign 
+        userOp.signature = signUserOp(userOp, ownerKeys[0]);
+        // deposit 
+        entryPoint.depositTo{value: DEPOSIT_VALUE}(address(sender));
+        assertEq(entryPoint.balanceOf(address(sender)), DEPOSIT_VALUE);
+        vm.stopPrank();
+
+        UserOperation[] memory ops;
+        ops = new UserOperation[](1);
+        ops[0] = userOp;
+
+        // bundler send operation to entryPoint
+        vm.prank(bundler);
+        entryPoint.handleOps(ops, payable(bundler));
+
+        //check effects
+        assertEq(MyWallet(sender).leastConfirmThreshold(), confirmThreshold);
+        // pay with deposited ether
+        assertLt(entryPoint.balanceOf(address(sender)), DEPOSIT_VALUE);
     }
 
     function testEntrySubmitTransaction() public {
@@ -89,6 +138,8 @@ contract MyWalletEntryTest is TestHelper {
         assertEq(data, abi.encodeCall(Counter.increment, ()));
         assertEq(confirmNum, 0);
         assertEq(timestamp, block.timestamp + timeLimit);
+        // pay with deposited ether
+        assertLt(entryPoint.balanceOf(address(wallet)), DEPOSIT_VALUE);
     }
 
     function testConfirmTransaction() public {
@@ -116,6 +167,8 @@ contract MyWalletEntryTest is TestHelper {
         (, , , , uint256 confirmNum, ) = wallet.getTransactionInfo(0);
         assertEq(confirmNum, 1);
         assertTrue(wallet.isConfirmed(0, owners[0]));
+        // pay with deposited ether
+        assertLt(entryPoint.balanceOf(address(wallet)), DEPOSIT_VALUE);
     }
 
     function testEntryExecuteTransaction() public {
@@ -146,6 +199,8 @@ contract MyWalletEntryTest is TestHelper {
 
         // check effects
         assertEq(counter.number(), 1);
+        // pay with deposited ether
+        assertLt(entryPoint.balanceOf(address(wallet)), DEPOSIT_VALUE);
     }
 
     function testEntrySubmitRecovery() public {
@@ -174,6 +229,8 @@ contract MyWalletEntryTest is TestHelper {
         assertEq(addr2, someone);
         assertEq(num, 0);
         assertTrue(wallet.isRecovering());
+        // pay with deposited ether
+        assertLt(entryPoint.balanceOf(address(wallet)), DEPOSIT_VALUE);
     }
 
     function testEntrySupportRecovery() public {
@@ -201,6 +258,8 @@ contract MyWalletEntryTest is TestHelper {
         (, , uint256 num) = wallet.getRecoveryInfo();
         assertEq(num, 1);
         assertTrue(wallet.recoverBy(0, guardians[0]));
+        // pay with deposited ether
+        assertLt(entryPoint.balanceOf(address(wallet)), DEPOSIT_VALUE);
     }
 
     function testEntryExecuteRecovery() public {
@@ -237,6 +296,8 @@ contract MyWalletEntryTest is TestHelper {
         assertEq(addr1, address(0));
         assertEq(addr2, address(0));
         assertEq(num, 0);
+        // pay with deposited ether
+        assertLt(entryPoint.balanceOf(address(wallet)), DEPOSIT_VALUE);
     }
 
     function testEntryFreezeWallet() public {
@@ -261,6 +322,8 @@ contract MyWalletEntryTest is TestHelper {
 
         // check effects
         assertTrue(wallet.isFreezing());
+        // pay with deposited ether
+        assertLt(entryPoint.balanceOf(address(wallet)), DEPOSIT_VALUE);
     }
 
     function testEntryUnfreezeWallet() public {
@@ -286,6 +349,8 @@ contract MyWalletEntryTest is TestHelper {
 
         assertTrue(wallet.unfreezeBy(0, owners[0]));
         assertEq(wallet.unfreezeCounter(), 1);
+        // pay with deposited ether
+        assertLt(entryPoint.balanceOf(address(wallet)), DEPOSIT_VALUE);
     }
 
 }

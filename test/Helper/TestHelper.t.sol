@@ -167,7 +167,7 @@ contract TestHelper is Test {
         _userOp.initCode = _initCode;
         _userOp.callData = _callData;
         _userOp.callGasLimit = 600000;
-        _userOp.verificationGasLimit = 100000;
+        _userOp.verificationGasLimit = 1000000;
         _userOp.preVerificationGas = 10000;
         _userOp.maxFeePerGas = 10000000000;
         _userOp.maxPriorityFeePerGas = 2500000000;
@@ -191,7 +191,7 @@ contract TestHelper is Test {
         _userOp.initCode = _initCode;
         _userOp.callData = _callData;
         _userOp.callGasLimit = 600000;
-        _userOp.verificationGasLimit = 100000;
+        _userOp.verificationGasLimit = 1000000;
         _userOp.preVerificationGas = 10000;
         _userOp.maxFeePerGas = 10000000000;
         _userOp.maxPriorityFeePerGas = 2500000000;
