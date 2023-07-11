@@ -1,4 +1,4 @@
-@openzeppelin/=lib/aa-sample/lib/openzeppelin-contracts/
+@openzeppelin/=lib/openzeppelin-contracts/
 aa-sample/=lib/aa-sample/
 account-abstraction/=lib/account-abstraction/contracts/
 ds-test/=lib/forge-std/lib/ds-test/src/
