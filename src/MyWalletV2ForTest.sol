@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity 0.8.17;
+pragma solidity 0.8.19;
 
 import { ReentrancyGuard } from "openzeppelin/security/ReentrancyGuard.sol";
 import { MyWalletStorageV2 } from "./MyWalletStorage.sol";

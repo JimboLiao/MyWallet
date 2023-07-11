@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity 0.8.17;
+pragma solidity 0.8.19;
 
 import { EnumerableSet } from  "openzeppelin/utils/structs/EnumerableSet.sol";
 import { IEntryPoint } from "account-abstraction/interfaces/IEntryPoint.sol";
