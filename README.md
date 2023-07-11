@@ -1,5 +1,6 @@
 # MyWallet
 *This is a final project for Appworks School Blockchain Program #2 and for fun*
+
 [HackMD](https://hackmd.io/@jimboliao/HkpVqliwh)
 
 ## Description
@@ -57,6 +58,7 @@ You can refer to following resources for more details.
 使用`forge test`進行測試
 `MyWallet.t.sol`：測試直接使用EOA和錢包互動
 `MyWalletEntry.t.sol`：測試透過Entry Point和錢包互動
+`MyWalletWithPayMaster.t.sol`：測試使用以 ERC20 和 PayMaster 支付手續費
 
 ## Usage
 MyWallet 有幾個主要功能：
