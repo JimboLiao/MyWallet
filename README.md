@@ -26,11 +26,13 @@
 圖片來源：https://alchemy.com/blog/account-abstraction
 
 基本流程為：
-1. 依據要互動的內容準備 UserOperation
-2. 將 UserOperation 發送到池中
+1. user 依據要互動的內容準備 UserOperation
+2. user 將 UserOperation 發送到池中
 3. Bundler 鏈下透過 EntryPoint 驗證 UserOperation 有效
-4. 將有效的一堆 UserOperation 包起來送到 EntryPoint 執行
-5. Bundler 取回手續費
+    - `simulateValidation(UserOperation calldata userOp)`
+5. 將有效的一堆 UserOperation 包起來送到 EntryPoint 執行 
+    - `handleOps(UserOperation[] calldata ops, address payable beneficiary)`
+7. Bundler 取回手續費和獎勵
 
 手續費的補償來源可能為:
 1. 使用者的合約帳戶
@@ -69,13 +71,14 @@ MyWallet 有以下幾個主要功能：
 2. 白名單
 3. 凍結
 4. 社交恢復
+5. EIP-4337 驗證 UserOperation
 
 
 ### 多簽 ＭultiSig
 創建錢包時，使用者可以設定多位錢包的 owner 以及多簽通過的門檻 `leastConfirmThreshold`
 
 多簽流程：
-![](https://hackmd.io/_uploads/S1QlgUuF2.png)
+![](https://hackmd.io/_uploads/SkY_rgnK2.png)
 1. owner 透過`function submitTransaction(address _to,uint256 _value,bytes calldata _data)` 傳送交易資訊，成功後會取得該交易的index，該交易狀態為PENDING
 2. owner 透過`confirmTransaction(uint256 _transactionIndex)` 確認執行交易，當確認次數達到通過門檻後該交易狀態改為 PASS，但若是沒有在一天內達到門檻，交易狀態改為 OVERTIME，無法被執行
 3. 狀態為 PASS 的交易，任何人都可以透過 `function executeTransaction(uint256 _transactionIndex) ` 執行
@@ -83,13 +86,19 @@ MyWallet 有以下幾個主要功能：
 ### 白名單 WhiteList
 創建錢包時，使用者可以設定白名單地址，也可以在通過多簽門檻後新增或移除白名單地址。當 `submitTransaction` 的互動對象為白名單地址時，僅需一次 confirm 該交易狀態就會改成PASS。
 
+新增、移除白名單：
+![](https://hackmd.io/_uploads/rJGAFl2Y2.png)
 新增、移除白名單須提交交易，設定互動對象為合約地址本身，並執行
 `function addWhiteList(address _whiteAddr)`、`function removeWhiteList(address _removeAddr)`。也就是說新增或是移除白名單都需要通過多簽門檻。
+
 
 ### 凍結 Freeze
 owner 可以透過 `function freezeWallet()` 來凍結合約錢包，錢包凍結期間沒辦法執行 `function executeTransaction(uint256 _transactionIndex)`
 
 owner 可以透過 `function unfreezeWallet()` 來解凍錢包，當多個owner (同樣以`leastConfirmThreshold` 作為門檻)執行後，錢包就會解除凍結狀態。
+
+凍結、解凍：
+![](https://hackmd.io/_uploads/rker9lnYh.png)
 
 ### 社交恢復 Social Recovery
 創建錢包時，使用者可以設定多個地址作為 guardian，但 MyWallet 中存的是這些地址的雜湊值，用以保障守護者的隱私，取得雜湊的方式為`keccak256(abi.encodePacked(guardianAddress))`。
@@ -98,8 +107,13 @@ owner 可以透過 `function unfreezeWallet()` 來解凍錢包，當多個owner 
 類似於多簽，要完成恢復需要達成另一個門檻 `recoverThreshold` ，至少需有這麼多的 guardian 支持才能真的執行社交恢復。
 
 社交恢復流程：
+![](https://hackmd.io/_uploads/rkUwCe3Yh.png)
 1. guardian 透過 `function submitRecovery(address _replacedOwner,address _newOwner)` 傳送恢復資訊。
 2. guardian 透過`function supportRecovery()`
 3. 當足夠多的 guardian 做完第二步達到 `recoverThreshold` 門檻後，owner 可以透過 `function executeRecovery()` 進行恢復
 
+![](https://hackmd.io/_uploads/rJ2zJb3K2.png)
 owner 可以透過`function replaceGuardian(bytes32 _oldGuardianHash, bytes32 _newGuardianHash)`替換 guardian，流程與類似新增白名單，owner 需要提交交易資訊並且通過多簽門檻。
+
+### EIP-4337 驗證 UserOperation
+MyWallet 仍然以 ECDSA 的簽名方法驗證，當 signer 為 owner / guardian 時驗證才通過。
